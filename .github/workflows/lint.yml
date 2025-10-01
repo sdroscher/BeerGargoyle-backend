@@ -1,0 +1,40 @@
+name: golangci-lint
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  # Optional: allow read access to pull request. Use with `only-new-issues` option.
+  # pull-requests: read
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: bufbuild/buf-lint-action@v1
+        with:
+          input: protobuf
+      - name: Generate protobuf files
+        run: buf generate protobuf
+
+      - uses: brokeyourbike/go-mockery-action@v0.1.7
+        with:
+          mockery-version: 3.5.1
+
+      - name: Generate mocks
+        run: mockery
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.3.0
+          args: --timeout=5m

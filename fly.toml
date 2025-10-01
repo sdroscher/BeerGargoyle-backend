@@ -1,0 +1,31 @@
+# fly.toml app configuration file generated for beergargoyle-backend on 2023-05-30T23:39:45-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "beergargoyle-backend"
+primary_region = "sea"
+
+[env]
+  PORT = "8080"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  [[services.ports]]
+    handlers = ["tls"]
+    port = "443"
+  [services.ports.tls_options]
+    alpn = ["h2"]
+#  [[services.http_checks]]
+#    interval = 10000
+#    grace_period = "5s"
+#    method = "get"
+#    path = "/grpc.health.v1.Health/Check?encoding=json&msg=%7B%7D"
+#    protocol = "http"
+#    restart_limit = 0
+#    timeout = 2000
+#    tls_skip_verify = false

@@ -1,0 +1,72 @@
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: bufbuild/buf-setup-action@v1
+
+      - name: Generate protobuf files
+        run: buf generate protobuf
+
+      - uses: brokeyourbike/go-mockery-action@v0.1.7
+        with:
+          mockery-version: 3.5.1
+
+      - name: Generate mocks
+        run: mockery
+
+      - name: Build
+        run: go build -v -o BeerGargoyle main.go
+
+  linting:
+    uses: ./.github/workflows/lint.yml
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate protobuf files
+        run: buf generate protobuf
+
+      - uses: brokeyourbike/go-mockery-action@v0.1.7
+        with:
+          mockery-version: 3.5.1
+
+      - name: Generate mocks
+        run: mockery
+
+      - name: Gotestsum installer
+        uses: autero1/action-gotestsum@v2.0.0
+        with:
+          gotestsum_version: 1.9.0
+
+      - name: Test
+        env:
+          TESTCOVERAGE_THRESHOLD: 10
+        run: |
+          gotestsum -- -coverprofile=cover.out ./...
+          sh scripts/coverage.sh

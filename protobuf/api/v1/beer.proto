@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "BeerGargoyle/pkg/server/grpc/api/v1";
+
+service BeerService {
+  rpc FindBeer(FindBeerRequest) returns (FindBeerResponse);
+  rpc AddBeer(AddBeerRequest) returns (AddBeerResponse);
+  rpc GetBeerFormats(GetBeerFormatsRequest) returns (GetBeerFormatsResponse);
+}
+
+message FindBeerRequest {
+  string query = 1;
+}
+
+message FindBeerResponse {
+  repeated Beer beers = 1;
+}
+
+message Beer {
+  uint64 id = 1;
+  string name = 2;
+  string description = 3;
+  optional string image_url = 4;
+  BeerStyle style = 5;
+  Brewery brewery = 6;
+  double abv = 7;
+  optional uint64 ibu = 8;
+  optional uint64 external_id = 9;
+  optional string external_source = 10;
+  optional double external_rating = 11;
+}
+
+message BeerStyle {
+  uint64 id = 1;
+  string name = 2;
+}
+
+message Brewery {
+  uint64 id = 1;
+  string name = 2;
+  string description = 3;
+  optional Address address = 4;
+  string image_url = 5;
+  optional uint64 external_id = 9;
+  optional string external_source = 10;
+  optional double external_rating = 11;
+}
+
+message Address {
+  uint64 id = 1;
+  string country = 2;
+  string locality = 3;
+  string region = 4;
+  string postal_code = 5;
+  string street_address = 6;
+}
+
+message AddBeerRequest {
+  Beer beer = 1;
+}
+
+message AddBeerResponse {
+  Beer beer = 1;
+}
+
+message BeerFormat {
+  uint64 format_id = 1;
+  string package_type = 2;
+  double metric_size = 3;
+  double imperial_size = 4;
+}
+
+message GetBeerFormatsRequest {}
+
+message GetBeerFormatsResponse {
+  repeated BeerFormat formats = 1;
+}

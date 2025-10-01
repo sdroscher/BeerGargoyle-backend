@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package api.v1;
+
+option go_package = "BeerGargoyle/pkg/server/grpc/api/v1";
+
+// TODO what about first name & last name? There are DB columns for these
+message User {
+  string id = 1;
+  string user_name = 2;
+  string email = 3;
+  optional string untapped_username = 4;
+}
+
+service UserService {
+  rpc AddUser(AddUserRequest) returns (AddUserResponse) {}
+  rpc GetUserByEmail(GetUserByEmailRequest) returns (GetUserByEmailResponse) {}
+}
+
+message AddUserRequest {
+  string name = 1;
+  string email = 2;
+  string untapped_username = 3;
+}
+
+message AddUserResponse {
+  User user = 1;
+}
+
+message GetUserByEmailRequest {
+  string email = 1;
+}
+
+message GetUserByEmailResponse {
+  User user = 1;
+}

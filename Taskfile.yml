@@ -1,0 +1,69 @@
+version: '3'
+
+tasks:
+  grpc:
+    desc: Generate the gRPC proto code
+    cmds:
+      - buf generate protobuf
+    sources:
+      - protobuf/user.proto
+      - protobuf/beer.proto
+      - protobuf/cellar.proto
+    generates:
+      - pkg/server/grpc/api/v1/user.pb.go
+      - pkg/server/grpc/api/v1/beer.pb.go
+      - pkg/server/grpc/api/v1/cellar.pb.go
+      - dart/api/v1/beer.pb.dart
+      - dart/api/v1/cellar.pb.dart
+      - dart/api/v1/user.pb.dart
+
+  mocks:
+    desc: Generate mocks
+    cmds:
+      - mockery
+    sources:
+      - pkg/repository/cellar.go
+    generates:
+      - mocks/cellar_repository.go
+
+  build:
+    desc: Build the backend app
+    deps: [grpc, mocks]
+    cmds:
+      - go build -v -o BeerGargoyle main.go
+
+  serve:
+    desc: Start the backend server
+    deps: [build]
+    cmds:
+      - gow run . serve
+
+  migrate:
+    desc: Update the database schema
+    deps: [build]
+    cmds:
+      - gow run . migrate
+
+  lint:
+    desc: Run linting
+    deps: [build]
+    cmds:
+      - golangci-lint --verbose run
+
+  test:
+    desc: Run tests
+    deps: [build]
+    cmds:
+      - gotestsum -- -coverprofile=cover.out ./...
+      - sh scripts/coverage.sh
+    env:
+      TESTCOVERAGE_THRESHOLD: 72.0
+
+  check:
+    desc: pre-commit checks
+    deps: [test, lint]
+
+  grpcui:
+    desc: Start the gRPC UI
+    cmds:
+      - grpcui -plaintext -import-path protobuf -proto api/v1/beer.proto -proto api/v1/cellar.proto -proto api/v1/user.proto 127.0.0.1:8380

@@ -1,0 +1,14 @@
+all: true
+dir: mocks
+filename: '{{.InterfaceName | snakecase}}_mock.go'
+structname: '{{.InterfaceName}}'
+pkgname: mocks
+template: testify
+template-data:
+  unroll-variadic: true
+packages:
+  droscher.com/BeerGargoyle/pkg/repository:
+    config:
+      all: false
+    interfaces:
+      CellarRepository: {}

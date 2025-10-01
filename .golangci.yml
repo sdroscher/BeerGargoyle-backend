@@ -1,0 +1,72 @@
+version: "2"
+run:
+  issues-exit-code: 2
+linters:
+  default: all
+  disable:
+    - embeddedstructfieldcheck
+    - exhaustruct
+    - funcorder
+    - lll
+    - mnd
+    - paralleltest
+    - protogetter
+    - wrapcheck
+    - wsl
+    - wsl_v5
+  settings:
+    cyclop:
+      max-complexity: 12
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: github.com/sirupsen/logrus
+              desc: not allowed
+            - pkg: github.com/pkg/errors
+              desc: Should be replaced by standard lib errors package
+    funlen:
+      lines: 70
+    varnamelen:
+      ignore-names:
+        - db
+        - id
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - forbidigo
+          - gochecknoglobals
+          - gochecknoinits
+        path: cmd/
+      - linters:
+          - ireturn
+          - revive
+        path: integrations/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(droscher.com/BeerGargoyle)
+    gofumpt:
+      extra-rules: false
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

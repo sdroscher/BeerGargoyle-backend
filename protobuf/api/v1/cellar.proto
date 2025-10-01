@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package api.v1;
+
+import "api/v1/beer.proto";
+import "google/protobuf/timestamp.proto";
+import "api/v1/user.proto";
+
+option go_package = "BeerGargoyle/pkg/server/grpc/api/v1";
+
+service CellarService {
+  rpc AddCellar(AddCellarRequest) returns (AddCellarResponse) {}
+  rpc UpdateCellar(UpdateCellarRequest) returns (UpdateCellarResponse) {}
+  rpc GetCellar(GetCellarRequest) returns (GetCellarResponse) {}
+  rpc GetCellarList(GetCellarListRequest) returns (GetCellarListResponse) {}
+  rpc GetCellarStats(GetCellarStatsRequest) returns (GetCellarStatsResponse) {}
+
+  rpc GetCellarEntry(GetCellarEntryRequest) returns (GetCellarEntryResponse) {}
+  rpc RecommendBeer(RecommendBeerRequest) returns (RecommendBeerResponse) {}
+  rpc AddCellarBeer(AddCellarBeerRequest) returns (AddCellarBeerResponse) {}
+  rpc UpdateBeer(UpdateBeerRequest) returns (UpdateBeerResponse) {}
+  rpc GetCellarRecommendationParams(GetCellarRecommendationParamsRequest) returns (GetCellarRecommendationParamsResponse) {}
+
+  rpc ListCellarBeers(ListCellarBeersRequest) returns (ListCellarBeersResponse) {}
+
+  rpc CreateAdventCalendar(CreateAdventCalendarRequest) returns (CreateAdventCalendarResponse) {}
+  rpc UpdateAdventCalendar(UpdateAdventCalendarRequest) returns (UpdateAdventCalendarResponse) {}
+  rpc GetAdventCalendar(GetAdventCalendarRequest) returns (GetAdventCalendarResponse) {}
+//  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
+}
+
+message AddCellarRequest {
+  string owner_uuid = 1;
+  string name = 2;
+  string description = 3;
+  repeated string locations = 4;
+}
+
+message AddCellarResponse {
+  Cellar cellar = 1;
+}
+
+message UpdateCellarRequest {
+  uint64 cellar_id = 1;
+  string owner_uuid = 2;
+  string name = 3;
+  string description = 4;
+  repeated string locations = 5;
+}
+
+message UpdateCellarResponse {
+  Cellar cellar = 1;
+}
+
+message GetCellarRequest {
+  uint64 cellar_id = 1;
+}
+
+message GetCellarResponse {
+  Cellar cellar = 1;
+}
+
+message GetCellarListRequest {
+  string owner_uuid = 1;
+}
+
+message GetCellarListResponse {
+  repeated Cellar cellars = 1;
+}
+
+message Cellar {
+  uint64 cellar_id = 1;
+  User owner = 2;
+  string name = 3;
+  string description = 4;
+  repeated LocationInCellar locations = 5;
+}
+
+message GetCellarStatsRequest {
+  uint64 cellar_id = 1;
+}
+
+message GetCellarStatsResponse {
+  CellarStats cellar_stats = 1;
+}
+
+message CellarStats {
+  uint64 cellar_id = 1;
+  uint64 beer_count = 2;
+  uint64 unique_count = 3;
+  double total_volume = 4;
+  uint64 brewery_count = 5;
+  uint64 untried_count = 6;
+  uint64 special_count = 7;
+  double average_abv = 8;
+  double average_rating = 9;
+}
+
+message LocationInCellar {
+  uint64 location_id = 1;
+  string name = 2;
+}
+
+message CellarBeer {
+  uint64 cellar_entry_id = 1;
+  Cellar cellar = 2;
+  Beer beer = 3;
+  optional uint64 vintage = 4;
+  google.protobuf.Timestamp date_added = 5;
+  int64 quantity = 6;
+  LocationInCellar location = 7;
+  optional BeerFormat format = 8;
+  bool had_before = 9;
+  google.protobuf.Timestamp drink_before = 10;
+  google.protobuf.Timestamp cellar_until = 11;
+  bool special = 12;
+  repeated string tags = 13;
+}
+
+message GetCellarEntryRequest {
+  uint64 cellar_entry_id = 1;
+}
+
+message GetCellarEntryResponse {
+  CellarBeer entry = 1;
+}
+
+message CellarFilter {
+  optional uint64 brewery_id = 1;
+  optional double minimum_abv = 2;
+  optional double maximum_abv = 3;
+  optional uint64 style_id = 4;
+  optional uint64 minimum_vintage = 5;
+  optional uint64 maximum_vintage = 6;
+  optional bool overdue_to_drink = 7;
+  optional bool had_before = 8;
+  optional bool special = 9;
+  optional int64 minimum_quantity = 10;
+  optional int64 minimum_size = 11;
+  optional int64 maximum_size = 12;
+  optional double minimum_rating = 13;
+  optional double maximum_rating = 14;
+  repeated string tags = 15;
+  google.protobuf.Timestamp added_before = 16;
+}
+
+message RecommendBeerRequest {
+  uint64 cellar_id = 1;
+  CellarFilter filter = 2;
+}
+
+message RecommendBeerResponse {
+  CellarBeer recommendation = 1;
+}
+
+message GetCellarRecommendationParamsRequest {
+  uint64 cellar_id = 1;
+}
+
+message GetCellarRecommendationParamsResponse {
+  repeated Brewery breweries = 1;
+  repeated BeerStyle styles = 2;
+  double minimum_abv = 3;
+  double maximum_abv = 4;
+  int64 minimum_size = 5;
+  int64 maximum_size = 6;
+  uint64 oldest_vintage = 7;
+  uint64 newest_vintage = 8;
+  double minimum_rating = 9;
+  double maximum_rating = 10;
+  google.protobuf.Timestamp oldest_added_date = 11;
+}
+
+message AddCellarBeerRequest {
+  uint64 beer_id = 1;
+  uint64 cellar_id = 2;
+  uint64 location_id = 3;
+  optional uint64 vintage = 4;
+  int64 quantity = 5;
+  optional uint64 format_id = 6;
+  bool had_before = 7;
+  google.protobuf.Timestamp drink_before = 8;
+  google.protobuf.Timestamp cellar_until = 9;
+  bool special = 10;
+  google.protobuf.Timestamp date_added = 11;
+  repeated string tags = 12;
+}
+
+message AddCellarBeerResponse {
+  CellarBeer beer = 1;
+}
+
+message Tags {
+  repeated string tags = 1;
+}
+
+message UpdateBeerRequest {
+  uint64 cellar_entry_id = 1;
+  optional uint64 location_id = 2;
+  optional uint64 vintage = 3;
+  optional int64 quantity = 4;
+  optional uint64 format_id = 5;
+  optional bool had_before = 6;
+  optional google.protobuf.Timestamp drink_before = 7;
+  optional google.protobuf.Timestamp cellar_until = 8;
+  optional bool special = 9;
+  optional google.protobuf.Timestamp date_added = 10;
+  optional Tags tags = 11;
+}
+
+message UpdateBeerResponse{
+  CellarBeer beer = 1;
+}
+
+message ListCellarBeersRequest {
+  uint64 cellar_id = 1;
+}
+
+message ListCellarBeersResponse {
+  repeated CellarBeer beers = 1;
+}
+
+message AdventCalendar {
+  uint64 id = 1;
+  uint64 cellar_id = 2;
+  string name = 3;
+  string description = 4;
+  google.protobuf.Timestamp start_date = 5;
+  google.protobuf.Timestamp end_date = 6;
+  repeated AdventCalendarBeer beers = 7;
+}
+
+message AdventCalendarBeer {
+  CellarBeer beer = 1;
+  google.protobuf.Timestamp day = 2;
+  bool revealed = 3;
+}
+
+message CreateAdventCalendarRequest{
+  uint64 cellar_id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Timestamp start_date = 4;
+  google.protobuf.Timestamp end_date = 5;
+  repeated CellarFilter filters = 6;
+}
+
+message CreateAdventCalendarResponse{
+  AdventCalendar advent_calendar = 1;
+}
+
+message UpdateAdventCalendarRequest{
+  uint64 cellar_id = 1;
+  uint64 id = 2;
+  google.protobuf.Timestamp reveal_day = 3;
+}
+
+message UpdateAdventCalendarResponse{}
+
+message GetAdventCalendarRequest{
+  uint64 cellar_id = 1;
+  oneof criteria {
+    uint64 id = 2;
+    string name = 3;
+    google.protobuf.Timestamp for_date = 4;
+  }
+}
+
+message GetAdventCalendarResponse{
+  optional AdventCalendar advent_calendar = 1;
+}
