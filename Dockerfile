@@ -2,6 +2,12 @@ FROM golang:1.24-alpine AS build_base
 
 RUN apk add --no-cache git
 
+# Install buf for protobuf generation
+RUN go install github.com/bufbuild/buf/cmd/buf@latest
+
+# Install mockery for mock generation  
+RUN go install github.com/vektra/mockery/v2@v2.43.2
+
 # Set the Current Working Directory inside the container
 WORKDIR /tmp/BeerGargoyle
 
@@ -12,6 +18,12 @@ COPY go.sum .
 RUN go mod download
 
 COPY . .
+
+# Generate protobuf files
+RUN buf generate protobuf
+
+# Generate mocks
+RUN mockery
 
 # Build the Go app
 RUN go build -o ./out/BeerGargoyle main.go
