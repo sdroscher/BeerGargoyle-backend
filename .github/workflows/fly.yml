@@ -1,0 +1,40 @@
+name: Fly Deploy
+on:
+  push:
+    branches:
+      - main
+jobs:
+  test:
+    uses: ./.github/workflows/go.yml
+
+  deploy:
+    name: Deploy app
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency: deploy-group    # optional: ensure only one action runs at a time
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate protobuf files
+        run: buf generate protobuf
+
+      - uses: brokeyourbike/go-mockery-action@v0.1.7
+        with:
+          mockery-version: 3.5.1
+
+      - name: Generate mocks
+        run: mockery
+        
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

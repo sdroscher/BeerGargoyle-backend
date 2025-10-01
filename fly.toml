@@ -4,7 +4,7 @@
 #
 
 app = "beergargoyle-backend"
-primary_region = "sea"
+primary_region = "sjc"
 
 [env]
   PORT = "8080"
