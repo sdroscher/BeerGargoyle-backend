@@ -397,7 +397,7 @@ func (r *Repository) GetAdventCalendarByName(ctx context.Context, cellarID uint6
 
 func (r *Repository) UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error {
 	result := r.DB.WithContext(ctx).Exec(
-		"UPDATE advent_calendar_beers SET revealed = true, updated_at = CURRENT_TIMESTAMP"+
+		"UPDATE advent_calendar_beers SET revealed = NOT revealed, updated_at = CURRENT_TIMESTAMP"+
 			" FROM advent_calendars"+
 			" WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id"+
 			" AND advent_calendar_id = ?"+
