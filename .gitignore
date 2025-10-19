@@ -52,3 +52,6 @@ frontend/.yarn/*
 .pnp.*
 
 cover.out
+
+dart/
+dart-client/

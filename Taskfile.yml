@@ -6,16 +6,13 @@ tasks:
     cmds:
       - buf generate protobuf
     sources:
-      - protobuf/user.proto
-      - protobuf/beer.proto
-      - protobuf/cellar.proto
+      - protobuf/api/v1/user.proto
+      - protobuf/api/v1/beer.proto
+      - protobuf/api/v1/cellar.proto
     generates:
       - pkg/server/grpc/api/v1/user.pb.go
       - pkg/server/grpc/api/v1/beer.pb.go
       - pkg/server/grpc/api/v1/cellar.pb.go
-      - dart/api/v1/beer.pb.dart
-      - dart/api/v1/cellar.pb.dart
-      - dart/api/v1/user.pb.dart
 
   mocks:
     desc: Generate mocks
@@ -67,3 +64,14 @@ tasks:
     desc: Start the gRPC UI
     cmds:
       - grpcui -plaintext -import-path protobuf -proto api/v1/beer.proto -proto api/v1/cellar.proto -proto api/v1/user.proto 127.0.0.1:8380
+
+  dart-client:
+    desc: Generate Dart client for separate repository
+    cmds:
+      - buf generate protobuf --template buf.gen.dart.yaml
+      - echo "Dart client generated in dart-client/ directory"
+      - echo "Copy contents to your dart client repository when ready"
+    generates:
+      - dart-client/api/v1/beer.pb.dart
+      - dart-client/api/v1/cellar.pb.dart
+      - dart-client/api/v1/user.pb.dart
