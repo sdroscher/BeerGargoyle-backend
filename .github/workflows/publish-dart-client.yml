@@ -1,0 +1,82 @@
+name: Publish Dart Client
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'protobuf/**' ]
+  workflow_dispatch:
+    inputs:
+      create_tag:
+        description: 'Create version tag (e.g., v1.0.1)'
+        required: false
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout backend repo
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        
+    - name: Checkout dart client repo
+      uses: actions/checkout@v4
+      with:
+        repository: sdroscher/beergargoyle-dart-client
+        token: ${{ secrets.DART_CLIENT_TOKEN }}
+        path: dart-client
+        
+    - name: Setup Buf
+      uses: bufbuild/buf-setup-action@v1.28.1
+      
+    - name: Generate Dart client
+      run: |
+        cd backend
+        buf generate protobuf --template buf.gen.dart.yaml
+        
+    - name: Copy generated files to dart client
+      run: |
+        # Copy generated files
+        cp -r backend/dart-client/* dart-client/lib/
+        
+        # Create library export file
+        cat > dart-client/lib/beergargoyle_client.dart << 'EOF'
+        library beergargoyle_client;
+
+        // Export all generated protobuf files
+        export 'api/v1/beer.pb.dart';
+        export 'api/v1/beer.pbgrpc.dart';
+        export 'api/v1/cellar.pb.dart';
+        export 'api/v1/cellar.pbgrpc.dart';
+        export 'api/v1/user.pb.dart';
+        export 'api/v1/user.pbgrpc.dart';
+        EOF
+        
+    - name: Commit and push changes
+      run: |
+        cd dart-client
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+          exit 0
+        fi
+        
+        git commit -m "Update generated Dart client - $(date)"
+        git push origin main
+        
+        # Create tag if requested
+        if [ -n "${{ github.event.inputs.create_tag }}" ]; then
+          TAG="${{ github.event.inputs.create_tag }}"
+          # Update version in pubspec.yaml
+          sed -i "s/version: .*/version: ${TAG#v}/" pubspec.yaml
+          git add pubspec.yaml
+          git commit -m "Bump version to ${TAG#v}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          git push origin main
+        fi
