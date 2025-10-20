@@ -4,8 +4,7 @@ on:
 
 permissions:
   contents: read
-  # Optional: allow read access to pull request. Use with `only-new-issues` option.
-  # pull-requests: read
+  pull-requests: write
 jobs:
   golangci:
     name: lint
@@ -17,12 +16,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: bufbuild/buf-lint-action@v1
-        with:
           input: protobuf
+          push: false
+
       - name: Generate protobuf files
         run: buf generate protobuf
 
