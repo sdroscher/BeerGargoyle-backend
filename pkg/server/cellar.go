@@ -414,12 +414,7 @@ func (c *CellarServer) createAdventCalendar(ctx context.Context, cellarID uint64
 	beerMap := make(map[uint64]struct{}, days)
 
 	for day := startDate; !day.After(endDate); day = day.AddDate(0, 0, 1) {
-		recommendRequest := connect.NewRequest(&api.RecommendBeerRequest{
-			CellarId: cellarID,
-			Filter:   filters[index],
-		})
-
-		recommendation, err := c.uniqueRecommendation(ctx, recommendRequest, beerMap)
+		recommendation, err := c.uniqueRecommendation(ctx, cellarID, filters[index], beerMap)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -447,16 +442,16 @@ func (c *CellarServer) createAdventCalendar(ctx context.Context, cellarID uint64
 	return beers, pbBeers, nil
 }
 
-func (c *CellarServer) uniqueRecommendation(ctx context.Context, request *connect.Request[api.RecommendBeerRequest], beerMap map[uint64]struct{}) (*api.CellarBeer, error) {
+func (c *CellarServer) uniqueRecommendation(ctx context.Context, cellarID uint64, filter *api.CellarFilter, beerMap map[uint64]struct{}) (*api.CellarBeer, error) {
 	var result *api.CellarBeer
 
-	candidates, err := c.cellarRepository.FindBeerRecommendations(ctx, request.Msg.GetCellarId(), request.Msg.GetFilter())
+	candidates, err := c.cellarRepository.FindBeerRecommendations(ctx, cellarID, filter)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("%w: no candidates found for filter %v", ErrCannotCreate, request.Msg.GetFilter())
+		return nil, fmt.Errorf("%w: no candidates found for filter %v", ErrCannotCreate, filter)
 	}
 
 	rand.Shuffle(len(candidates), func(i, j int) {
@@ -471,7 +466,7 @@ func (c *CellarServer) uniqueRecommendation(ctx context.Context, request *connec
 	}
 
 	if result == nil {
-		return nil, fmt.Errorf("%w: no unique candidate found for filter %v", ErrCannotCreate, request.Msg.GetFilter())
+		return nil, fmt.Errorf("%w: no unique candidate found for filter %v", ErrCannotCreate, filter)
 	}
 
 	return result, nil
@@ -526,4 +521,55 @@ func (c *CellarServer) UpdateAdventCalendar(ctx context.Context, request *connec
 	}
 
 	return connect.NewResponse(&api.UpdateAdventCalendarResponse{}), nil
+}
+
+func (c *CellarServer) DeleteAdventCalendar(ctx context.Context, request *connect.Request[api.DeleteAdventCalendarRequest]) (*connect.Response[api.DeleteAdventCalendarResponse], error) {
+	err := c.cellarRepository.DeleteAdventCalendar(ctx, request.Msg.GetCellarId(), request.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&api.DeleteAdventCalendarResponse{}), nil
+}
+
+func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request *connect.Request[api.RegenerateAdventCalendarDayRequest]) (*connect.Response[api.RegenerateAdventCalendarDayResponse], error) {
+	adventCalendar, err := c.cellarRepository.GetAdventCalendarByID(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId())
+	if err != nil {
+		return nil, err
+	}
+
+	if request.Msg.Day == nil {
+		return nil, fmt.Errorf("%w: day must be set", ErrInvalidInput)
+	}
+
+	day := truncateToDay(request.Msg.GetDay().AsTime())
+
+	filter, err := c.cellarRepository.GetAdventCalendarFilter(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day)
+	if err != nil {
+		return nil, err
+	}
+
+	beerMap := make(map[uint64]struct{}, len(adventCalendar.Beers))
+
+	for _, beer := range adventCalendar.Beers {
+		beerMap[uint64(beer.CellarEntryID)] = struct{}{}
+	}
+
+	recommendation, err := c.uniqueRecommendation(ctx, request.Msg.GetCellarId(), grpc.CellarFilterFromModel(filter), beerMap)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.cellarRepository.UpdateAdventCalendarEntry(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day, recommendation.GetCellarEntryId())
+	if err != nil {
+		return nil, err
+	}
+
+	beer := api.AdventCalendarBeer{
+		Beer:     recommendation,
+		Day:      timestamppb.New(day),
+		Revealed: false,
+	}
+
+	return connect.NewResponse(&api.RegenerateAdventCalendarDayResponse{Beer: &beer}), nil
 }

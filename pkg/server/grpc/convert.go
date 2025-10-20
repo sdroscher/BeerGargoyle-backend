@@ -327,3 +327,78 @@ func AdventCalendarBeersFromModel(beers []model.AdventCalendarBeer) []*api.Adven
 
 	return pbBeers
 }
+
+//nolint:cyclop,funlen // this many ifs required for optional fields
+func CellarFilterFromModel(filter *model.AdventCalendarFilter) *api.CellarFilter {
+	pbFilter := api.CellarFilter{}
+
+	if filter == nil {
+		return &pbFilter
+	}
+
+	if filter.BreweryID != nil {
+		pbFilter.BreweryId = pointy.Uint64(*filter.BreweryID)
+	}
+
+	if filter.MinimumAbv != nil {
+		pbFilter.MinimumAbv = pointy.Float64(*filter.MinimumAbv)
+	}
+
+	if filter.MaximumAbv != nil {
+		pbFilter.MaximumAbv = pointy.Float64(*filter.MaximumAbv)
+	}
+
+	if filter.StyleID != nil {
+		pbFilter.StyleId = pointy.Uint64(*filter.StyleID)
+	}
+
+	if filter.MinimumVintage != nil {
+		pbFilter.MinimumVintage = pointy.Uint64(*filter.MinimumVintage)
+	}
+
+	if filter.MaximumVintage != nil {
+		pbFilter.MaximumVintage = pointy.Uint64(*filter.MaximumVintage)
+	}
+
+	if filter.OverdueToDrink != nil {
+		pbFilter.OverdueToDrink = pointy.Bool(*filter.OverdueToDrink)
+	}
+
+	if filter.HadBefore != nil {
+		pbFilter.HadBefore = pointy.Bool(*filter.HadBefore)
+	}
+
+	if filter.Special != nil {
+		pbFilter.Special = pointy.Bool(*filter.Special)
+	}
+
+	if filter.MinimumQuantity != nil {
+		pbFilter.MinimumQuantity = pointy.Int64(*filter.MinimumQuantity)
+	}
+
+	if filter.MinimumSize != nil {
+		pbFilter.MinimumSize = pointy.Int64(*filter.MinimumSize)
+	}
+
+	if filter.MaximumSize != nil {
+		pbFilter.MaximumSize = pointy.Int64(*filter.MaximumSize)
+	}
+
+	if filter.MinimumRating != nil {
+		pbFilter.MinimumRating = pointy.Float64(*filter.MinimumRating)
+	}
+
+	if filter.MaximumRating != nil {
+		pbFilter.MaximumRating = pointy.Float64(*filter.MaximumRating)
+	}
+
+	if filter.AddedBefore != nil {
+		pbFilter.AddedBefore = timestamppb.New(*filter.AddedBefore)
+	}
+
+	if len(filter.Tags) > 0 {
+		pbFilter.Tags = TagsFromModel(filter.Tags)
+	}
+
+	return &pbFilter
+}

@@ -26,6 +26,8 @@ service CellarService {
   rpc CreateAdventCalendar(CreateAdventCalendarRequest) returns (CreateAdventCalendarResponse) {}
   rpc UpdateAdventCalendar(UpdateAdventCalendarRequest) returns (UpdateAdventCalendarResponse) {}
   rpc GetAdventCalendar(GetAdventCalendarRequest) returns (GetAdventCalendarResponse) {}
+  rpc DeleteAdventCalendar(DeleteAdventCalendarRequest) returns (DeleteAdventCalendarResponse) {}
+  rpc RegenerateAdventCalendarDay(RegenerateAdventCalendarDayRequest) returns (RegenerateAdventCalendarDayResponse) {}
 //  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
 }
 
@@ -228,6 +230,7 @@ message AdventCalendar {
   google.protobuf.Timestamp start_date = 5;
   google.protobuf.Timestamp end_date = 6;
   repeated AdventCalendarBeer beers = 7;
+  repeated CellarFilter filters = 8;
 }
 
 message AdventCalendarBeer {
@@ -268,4 +271,21 @@ message GetAdventCalendarRequest{
 
 message GetAdventCalendarResponse{
   optional AdventCalendar advent_calendar = 1;
+}
+
+message DeleteAdventCalendarRequest{
+  uint64 cellar_id = 1;
+  uint64 id = 2;
+}
+
+message DeleteAdventCalendarResponse{}
+
+message RegenerateAdventCalendarDayRequest{
+  uint64 cellar_id = 1;
+  uint64 advent_calendar_id = 2;
+  google.protobuf.Timestamp day = 3;
+}
+
+message RegenerateAdventCalendarDayResponse{
+  AdventCalendarBeer beer = 1;
 }
