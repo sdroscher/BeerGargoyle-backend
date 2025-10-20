@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -22,6 +23,10 @@ type CellarTestSuite struct {
 
 func TestCellarTestSuite(t *testing.T) {
 	suite.Run(t, new(CellarTestSuite))
+}
+
+func (suite *CellarTestSuite) TearDownTest() {
+	suite.NoError(suite.mock.ExpectationsWereMet())
 }
 
 func (suite *CellarTestSuite) TestAddCellar_Adds_Cellars() {
@@ -110,7 +115,6 @@ func (suite *CellarTestSuite) TestGetCellarById_GetsCellar() {
 
 	result, err := suite.repository.GetCellarByID(context.Background(), 100)
 
-	suite.NoError(suite.mock.ExpectationsWereMet())
 	suite.Require().NoError(err)
 	suite.Equal("my cellar", result.Name)
 	suite.Equal(uint(100), result.OwnerID)
@@ -154,7 +158,6 @@ func (suite *CellarTestSuite) TestGetCellarEntryByID_GetsCellarEntryWithAssociat
 	suite.Equal("Can", cellarEntry.Format.Package)
 	suite.InDelta(330.0, cellarEntry.Format.SizeMetric, 0.1)
 	suite.Len(cellarEntry.Cellar.Locations, 2)
-	suite.NoError(suite.mock.ExpectationsWereMet())
 }
 
 func (suite *CellarTestSuite) TestGetCellarStats_GetsCellarStats() {
@@ -332,7 +335,53 @@ func (suite *CellarTestSuite) TestGetCellarStyles() {
 	suite.Equal("Stout - Imperial / Double Coffee", styles[1].Name)
 }
 
-func (suite *CellarTestSuite) TestSaveAdventCalendar() {}
+func (suite *CellarTestSuite) TestSaveAdventCalendar() {
+	startDate := time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC)
+
+	calendar := model.AdventCalendar{
+		CellarID:    1,
+		Name:        "Christmas Calendar",
+		Description: "An advent calendar for December",
+		StartDate:   startDate,
+		EndDate:     endDate,
+		Beers: []model.AdventCalendarBeer{
+			{
+				CellarEntryID: 10,
+				FilterID:      1,
+				Day:           startDate,
+				Revealed:      false,
+				Filter: model.AdventCalendarFilter{
+					MaximumRating: pointy.Float64(6.5),
+				},
+			},
+		},
+	}
+
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "advent_calendars" ("created_at","updated_at","deleted_at","cellar_id","name","description","start_date","end_date") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, uint(1), "Christmas Calendar", "An advent calendar for December", startDate, endDate).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(5)))
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "advent_calendar_filters" ("created_at","updated_at","deleted_at","brewery_id","minimum_abv","maximum_abv","style_id","minimum_vintage","maximum_vintage","overdue_to_drink","had_before","special","minimum_quantity","minimum_size","maximum_size","minimum_rating","maximum_rating","added_before") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT DO NOTHING RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 6.5, nil).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(1)))
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "advent_calendar_beers" ("created_at","updated_at","deleted_at","advent_calendar_id","cellar_entry_id","filter_id","day","revealed") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT ("id") DO UPDATE SET "advent_calendar_id"="excluded"."advent_calendar_id" RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, uint(5), uint(10), uint(1), startDate, false).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(1)))
+
+	suite.mock.ExpectCommit()
+
+	result, err := suite.repository.SaveAdventCalendar(context.Background(), calendar)
+
+	suite.Require().NoError(err)
+	suite.NotNil(result)
+	suite.Equal(uint(5), result.ID)
+	suite.Equal("Christmas Calendar", result.Name)
+	suite.Equal(uint(1), result.CellarID)
+	suite.Len(result.Beers, 1)
+}
 
 func (suite *CellarTestSuite) TestGetAdventCalendarByID() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "advent_calendars" WHERE cellar_id = $1 AND "advent_calendars"."id" = $2 AND "advent_calendars"."deleted_at" IS NULL ORDER BY "advent_calendars"."id" LIMIT $3`)).
@@ -399,4 +448,153 @@ func (suite *CellarTestSuite) expectReadFromAssociatedTables() {
 		WithArgs(10).
 		WillReturnRows(sqlmock.NewRows([]string{"cellar_entry_id"}).
 			AddRow(uint(10)))
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationRanges() {
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT min(b.abv) as minimum_abv, max(b.abv) as maximum_abv, min(bf.size_metric) as minimum_size, max(bf.size_metric) as maximum_size, min(ce.vintage) as minimum_vintage, max(ce.vintage) as maximum_vintage, round(min(b.external_rating), 2) as minimum_rating, round(max(b.external_rating), 2) as maximum_rating, min(ce.date_added) as oldest_added_date FROM cellar_entries ce INNER JOIN beers b on b.id = ce.beer_id INNER JOIN beer_formats bf on ce.format_id = bf.id WHERE ce.cellar_id = $1 LIMIT $2`)).
+		WithArgs(1, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"minimum_abv", "maximum_abv", "minimum_size", "maximum_size", "minimum_vintage", "maximum_vintage", "minimum_rating", "maximum_rating", "oldest_added_date"}).
+			AddRow(3.5, 12.0, 330, 750, 2018, 2023, 3.0, 5.0, time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)))
+
+	ranges, err := suite.repository.GetCellarRecommendationRanges(context.Background(), 1)
+
+	suite.Require().NoError(err)
+	suite.NotNil(ranges)
+	suite.InDelta(3.5, ranges.MinimumAbv, 0.1)
+	suite.InDelta(12.0, ranges.MaximumAbv, 0.1)
+	suite.Equal(int64(330), ranges.MinimumSize)
+	suite.Equal(int64(750), ranges.MaximumSize)
+	suite.Equal(uint64(2018), ranges.MinimumVintage)
+	suite.Equal(uint64(2023), ranges.MaximumVintage)
+	suite.InDelta(3.0, ranges.MinimumRating, 0.1)
+	suite.InDelta(5.0, ranges.MaximumRating, 0.1)
+	suite.Equal(time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC), ranges.OldestAddedDate)
+}
+
+func (suite *CellarTestSuite) TestUpdateAdventCalendar() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE advent_calendar_beers SET revealed = NOT revealed, updated_at = CURRENT_TIMESTAMP FROM advent_calendars WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id AND advent_calendar_id = $1 AND advent_calendars.cellar_id = $2 AND day = $3`)).
+		WithArgs(1, 1, day).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err := suite.repository.UpdateAdventCalendar(context.Background(), 1, 1, day)
+
+	suite.NoError(err)
+}
+
+func (suite *CellarTestSuite) TestUpdateAdventCalendar_Error() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE advent_calendar_beers SET revealed = NOT revealed, updated_at = CURRENT_TIMESTAMP FROM advent_calendars WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id AND advent_calendar_id = $1 AND advent_calendars.cellar_id = $2 AND day = $3`)).
+		WithArgs(1, 1, day).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	err := suite.repository.UpdateAdventCalendar(context.Background(), 1, 1, day)
+
+	suite.Require().Error(err)
+	suite.Equal(gorm.ErrRecordNotFound, err)
+}
+
+func (suite *CellarTestSuite) TestUpdateAdventCalendarEntry() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE advent_calendar_beers SET cellar_entry_id = $1, updated_at = CURRENT_TIMESTAMP, revealed = false FROM advent_calendars WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id AND advent_calendar_id = $2 AND advent_calendars.cellar_id = $3 AND day = $4`)).
+		WithArgs(25, 1, 1, day).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err := suite.repository.UpdateAdventCalendarEntry(context.Background(), 1, 1, day, 25)
+
+	suite.NoError(err)
+}
+
+func (suite *CellarTestSuite) TestUpdateAdventCalendarEntry_Error() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE advent_calendar_beers SET cellar_entry_id = $1, updated_at = CURRENT_TIMESTAMP, revealed = false FROM advent_calendars WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id AND advent_calendar_id = $2 AND advent_calendars.cellar_id = $3 AND day = $4`)).
+		WithArgs(25, 1, 1, day).
+		WillReturnError(errors.New("database error"))
+
+	err := suite.repository.UpdateAdventCalendarEntry(context.Background(), 1, 1, day, 25)
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "database error")
+}
+
+func (suite *CellarTestSuite) TestDeleteAdventCalendar() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advent_calendar_beers WHERE advent_calendar_id = $1`)).
+		WithArgs(1).
+		WillReturnResult(sqlmock.NewResult(0, 5))
+	suite.mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advent_calendars WHERE id = $1 AND cellar_id = $2`)).
+		WithArgs(1, 1).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	suite.mock.ExpectCommit()
+
+	err := suite.repository.DeleteAdventCalendar(context.Background(), 1, 1)
+
+	suite.NoError(err)
+}
+
+func (suite *CellarTestSuite) TestDeleteAdventCalendar_BeerDeletionError() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advent_calendar_beers WHERE advent_calendar_id = $1`)).
+		WithArgs(1).
+		WillReturnError(errors.New("database error"))
+	suite.mock.ExpectRollback()
+
+	err := suite.repository.DeleteAdventCalendar(context.Background(), 1, 1)
+
+	suite.ErrorContains(err, "database error")
+}
+
+func (suite *CellarTestSuite) TestDeleteAdventCalendar_CalendarDeletionError() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advent_calendar_beers WHERE advent_calendar_id = $1`)).
+		WithArgs(1).
+		WillReturnResult(sqlmock.NewResult(0, 5))
+	suite.mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM advent_calendars WHERE id = $1 AND cellar_id = $2`)).
+		WithArgs(1, 1).
+		WillReturnError(errors.New("calendar deletion error"))
+	suite.mock.ExpectRollback()
+
+	err := suite.repository.DeleteAdventCalendar(context.Background(), 1, 1)
+
+	suite.ErrorContains(err, "calendar deletion error")
+}
+
+func (suite *CellarTestSuite) TestGetAdventCalendarFilter() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "advent_calendar_filters"."id","advent_calendar_filters"."created_at","advent_calendar_filters"."updated_at","advent_calendar_filters"."deleted_at","advent_calendar_filters"."brewery_id","advent_calendar_filters"."minimum_abv","advent_calendar_filters"."maximum_abv","advent_calendar_filters"."style_id","advent_calendar_filters"."minimum_vintage","advent_calendar_filters"."maximum_vintage","advent_calendar_filters"."overdue_to_drink","advent_calendar_filters"."had_before","advent_calendar_filters"."special","advent_calendar_filters"."minimum_quantity","advent_calendar_filters"."minimum_size","advent_calendar_filters"."maximum_size","advent_calendar_filters"."minimum_rating","advent_calendar_filters"."maximum_rating","advent_calendar_filters"."added_before" FROM "advent_calendar_filters" JOIN advent_calendar_beers ON advent_calendar_beers.filter_id = advent_calendar_filters.id JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id WHERE advent_calendars.cellar_id = $1 AND advent_calendar_beers.advent_calendar_id = $2 AND advent_calendar_beers.day = $3 AND "advent_calendar_filters"."deleted_at" IS NULL ORDER BY "advent_calendar_filters"."id" LIMIT $4`)).
+		WithArgs(1, 1, day, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "minimum_abv", "maximum_abv"}).
+			AddRow(1, 5.0, 10.0))
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "advent_calendar_filter_tags" WHERE "advent_calendar_filter_tags"."advent_calendar_filter_id" = $1`)).
+		WithArgs(1).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	filter, err := suite.repository.GetAdventCalendarFilter(context.Background(), 1, 1, day)
+
+	suite.Require().NoError(err)
+	suite.NotNil(filter)
+	suite.Equal(uint(1), filter.ID)
+	suite.NotNil(filter.MinimumAbv)
+	suite.InDelta(5.0, *filter.MinimumAbv, 0.1)
+	suite.NotNil(filter.MaximumAbv)
+	suite.InDelta(10.0, *filter.MaximumAbv, 0.1)
+}
+
+func (suite *CellarTestSuite) TestGetAdventCalendarFilter_NotFound() {
+	day := time.Date(2023, 12, 15, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "advent_calendar_filters"."id","advent_calendar_filters"."created_at","advent_calendar_filters"."updated_at","advent_calendar_filters"."deleted_at","advent_calendar_filters"."brewery_id","advent_calendar_filters"."minimum_abv","advent_calendar_filters"."maximum_abv","advent_calendar_filters"."style_id","advent_calendar_filters"."minimum_vintage","advent_calendar_filters"."maximum_vintage","advent_calendar_filters"."overdue_to_drink","advent_calendar_filters"."had_before","advent_calendar_filters"."special","advent_calendar_filters"."minimum_quantity","advent_calendar_filters"."minimum_size","advent_calendar_filters"."maximum_size","advent_calendar_filters"."minimum_rating","advent_calendar_filters"."maximum_rating","advent_calendar_filters"."added_before" FROM "advent_calendar_filters" JOIN advent_calendar_beers ON advent_calendar_beers.filter_id = advent_calendar_filters.id JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id WHERE advent_calendars.cellar_id = $1 AND advent_calendar_beers.advent_calendar_id = $2 AND advent_calendar_beers.day = $3 AND "advent_calendar_filters"."deleted_at" IS NULL ORDER BY "advent_calendar_filters"."id" LIMIT $4`)).
+		WithArgs(1, 1, day, 1).
+		WillReturnError(gorm.ErrRecordNotFound)
+
+	filter, err := suite.repository.GetAdventCalendarFilter(context.Background(), 1, 1, day)
+
+	suite.Require().ErrorIs(err, gorm.ErrRecordNotFound)
+	suite.Nil(filter)
 }

@@ -31,6 +31,7 @@ linters:
       ignore-names:
         - db
         - id
+        - tx
   exclusions:
     generated: lax
     presets:
@@ -48,6 +49,9 @@ linters:
           - ireturn
           - revive
         path: integrations/
+      - linters:
+          - err113
+        path: (.+)_test.go
     paths:
       - third_party$
       - builtin$

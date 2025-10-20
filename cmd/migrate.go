@@ -9,7 +9,7 @@ import (
 )
 
 type MigrateCmd struct {
-	ConfigFile string `default:".BeerGargoyle.yaml" help:"Path to config file" short:"c" type:"path"`
+	ConfigFile string `default:".BeerGargoyle.toml" help:"Path to config file" short:"c"`
 }
 
 func (m *MigrateCmd) Run(_ *Context) error {
@@ -37,7 +37,7 @@ func (m *MigrateCmd) Run(_ *Context) error {
 		&model.BeerStyle{}, &model.BeerFormat{}, &model.Beer{},
 		&model.User{},
 		&model.Cellar{}, &model.LocationInCellar{}, &model.CellarEntry{},
-		&model.AdventCalendar{}, &model.AdventCalendarBeer{})
+		&model.AdventCalendar{}, &model.AdventCalendarBeer{}, &model.AdventCalendarFilter{})
 	if err != nil {
 		return err
 	}

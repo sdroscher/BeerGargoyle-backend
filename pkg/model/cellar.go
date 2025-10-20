@@ -77,8 +77,31 @@ type AdventCalendarBeer struct {
 	gorm.Model
 	AdventCalendarID uint
 	CellarEntryID    uint
+	FilterID         uint
 	Day              time.Time
 	Revealed         bool
 
-	CellarEntry CellarEntry `gorm:"foreignKey:CellarEntryID"`
+	Filter      AdventCalendarFilter `gorm:"foreignKey:FilterID"`
+	CellarEntry CellarEntry          `gorm:"foreignKey:CellarEntryID"`
+}
+
+type AdventCalendarFilter struct {
+	gorm.Model
+
+	BreweryID       *uint64
+	MinimumAbv      *float64
+	MaximumAbv      *float64
+	StyleID         *uint64
+	MinimumVintage  *uint64
+	MaximumVintage  *uint64
+	OverdueToDrink  *bool
+	HadBefore       *bool
+	Special         *bool
+	MinimumQuantity *int64
+	MinimumSize     *int64
+	MaximumSize     *int64
+	MinimumRating   *float64
+	MaximumRating   *float64
+	Tags            []Tag `gorm:"many2many:advent_calendar_filter_tags;"`
+	AddedBefore     *time.Time
 }

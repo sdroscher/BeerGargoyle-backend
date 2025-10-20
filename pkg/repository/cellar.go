@@ -14,11 +14,13 @@ import (
 type CellarRepository interface { //nolint:interfacebloat // this is an acceptable interface
 	AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error)
 	AddCellar(ctx context.Context, name string, description string, locations []string, owner model.User) (*model.Cellar, error)
+	DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error
 	DeleteCellarEntry(ctx context.Context, cellarEntryID uint) error
 	FindBeerRecommendations(ctx context.Context, cellarID uint64, filter *api.CellarFilter) ([]*model.CellarEntry, error)
 	GetAdventCalendarByID(ctx context.Context, cellarID uint64, calendarID uint64) (*model.AdventCalendar, error)
 	GetAdventCalendarByName(ctx context.Context, cellarID uint64, name string) (*model.AdventCalendar, error)
 	GetAdventCalendarForDate(ctx context.Context, cellarID uint64, date time.Time) (*model.AdventCalendar, error)
+	GetAdventCalendarFilter(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) (*model.AdventCalendarFilter, error)
 	GetCellarBreweryNames(ctx context.Context, cellarID uint64) ([]*model.Brewery, error)
 	GetCellarByID(ctx context.Context, cellarID uint) (*model.Cellar, error)
 	GetCellarEntryByID(ctx context.Context, cellarEntryID uint) (*model.CellarEntry, error)
@@ -29,6 +31,7 @@ type CellarRepository interface { //nolint:interfacebloat // this is an acceptab
 	GetCellarsForUser(ctx context.Context, user model.User) ([]*model.Cellar, error)
 	SaveAdventCalendar(ctx context.Context, calendar model.AdventCalendar) (*model.AdventCalendar, error)
 	UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error
+	UpdateAdventCalendarEntry(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time, cellarEntryID uint64) error
 	UpdateCellarEntry(ctx context.Context, entry *model.CellarEntry) (*model.CellarEntry, error)
 }
 
@@ -300,20 +303,20 @@ func (r *Repository) GetCellarStyles(ctx context.Context, cellarID uint64) ([]*m
 }
 
 func (r *Repository) GetCellarRecommendationRanges(ctx context.Context, cellarID uint64) (*model.CellarRecommendationRanges, error) {
-	var ranges *model.CellarRecommendationRanges
+	var ranges model.CellarRecommendationRanges
 
 	result := r.DB.WithContext(ctx).Table("cellar_entries ce").
 		Joins("INNER JOIN beers b on b.id = ce.beer_id").
 		Joins("INNER JOIN beer_formats bf on ce.format_id = bf.id").
 		Where("ce.cellar_id = ?", cellarID).
-		Select("min(b.abv) as minimum_abv",
-			"max(b.abv) as maximum_abv",
-			"min(bf.size_metric) as minimum_size",
-			"max(bf.size_metric) as maximum_size",
-			"min(ce.vintage) as minimum_vintage",
-			"max(ce.vintage) as maximum_vintage",
-			"round(min(b.external_rating), 2) as minimum_rating",
-			"round(max(b.external_rating), 2) as maximum_rating",
+		Select("min(b.abv) as minimum_abv, " +
+			"max(b.abv) as maximum_abv, " +
+			"min(bf.size_metric) as minimum_size, " +
+			"max(bf.size_metric) as maximum_size, " +
+			"min(ce.vintage) as minimum_vintage, " +
+			"max(ce.vintage) as maximum_vintage, " +
+			"round(min(b.external_rating), 2) as minimum_rating, " +
+			"round(max(b.external_rating), 2) as maximum_rating, " +
 			"min(ce.date_added) as oldest_added_date").
 		Take(&ranges)
 
@@ -321,7 +324,7 @@ func (r *Repository) GetCellarRecommendationRanges(ctx context.Context, cellarID
 		return nil, result.Error
 	}
 
-	return ranges, nil
+	return &ranges, nil
 }
 
 func (r *Repository) SaveAdventCalendar(ctx context.Context, calendar model.AdventCalendar) (*model.AdventCalendar, error) {
@@ -334,7 +337,7 @@ func (r *Repository) SaveAdventCalendar(ctx context.Context, calendar model.Adve
 }
 
 func (r *Repository) GetAdventCalendarByID(ctx context.Context, cellarID uint64, calendarID uint64) (*model.AdventCalendar, error) {
-	var calendar *model.AdventCalendar
+	var calendar model.AdventCalendar
 
 	result := r.DB.WithContext(ctx).
 		Preload("Beers", func(db *gorm.DB) *gorm.DB { return db.Order("advent_calendar_beers.day ASC") }).
@@ -350,11 +353,11 @@ func (r *Repository) GetAdventCalendarByID(ctx context.Context, cellarID uint64,
 		return nil, result.Error
 	}
 
-	return calendar, nil
+	return &calendar, nil
 }
 
 func (r *Repository) GetAdventCalendarForDate(ctx context.Context, cellarID uint64, date time.Time) (*model.AdventCalendar, error) {
-	var calendar *model.AdventCalendar
+	var calendar model.AdventCalendar
 
 	result := r.DB.WithContext(ctx).
 		Preload("Beers", func(db *gorm.DB) *gorm.DB { return db.Order("advent_calendar_beers.day ASC") }).
@@ -371,11 +374,11 @@ func (r *Repository) GetAdventCalendarForDate(ctx context.Context, cellarID uint
 		return nil, result.Error
 	}
 
-	return calendar, nil
+	return &calendar, nil
 }
 
 func (r *Repository) GetAdventCalendarByName(ctx context.Context, cellarID uint64, name string) (*model.AdventCalendar, error) {
-	var calendar *model.AdventCalendar
+	var calendar model.AdventCalendar
 
 	result := r.DB.WithContext(ctx).
 		Preload("Beers", func(db *gorm.DB) *gorm.DB { return db.Order("advent_calendar_beers.day ASC") }).
@@ -392,7 +395,7 @@ func (r *Repository) GetAdventCalendarByName(ctx context.Context, cellarID uint6
 		return nil, result.Error
 	}
 
-	return calendar, nil
+	return &calendar, nil
 }
 
 func (r *Repository) UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error {
@@ -405,4 +408,50 @@ func (r *Repository) UpdateAdventCalendar(ctx context.Context, cellarID uint64, 
 			" AND day = ?", calendarID, cellarID, day)
 
 	return result.Error
+}
+
+func (r *Repository) UpdateAdventCalendarEntry(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time, cellarEntryID uint64) error {
+	result := r.DB.WithContext(ctx).Exec(
+		"UPDATE advent_calendar_beers SET cellar_entry_id = ?, updated_at = CURRENT_TIMESTAMP, revealed = false"+
+			" FROM advent_calendars"+
+			" WHERE advent_calendar_beers.advent_calendar_id = advent_calendars.id"+
+			" AND advent_calendar_id = ?"+
+			" AND advent_calendars.cellar_id = ?"+
+			" AND day = ?", cellarEntryID, calendarID, cellarID, day)
+
+	return result.Error
+}
+
+func (r *Repository) DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error {
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.Exec("DELETE FROM advent_calendar_beers WHERE advent_calendar_id = ?", calendarID).Error
+		if err != nil {
+			return err
+		}
+
+		err = tx.Exec("DELETE FROM advent_calendars WHERE id = ? AND cellar_id = ?", calendarID, cellarID).Error
+		if err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+func (r *Repository) GetAdventCalendarFilter(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) (*model.AdventCalendarFilter, error) {
+	var filter model.AdventCalendarFilter
+
+	result := r.DB.WithContext(ctx).
+		Preload("Tags").
+		Joins("JOIN advent_calendar_beers ON advent_calendar_beers.filter_id = advent_calendar_filters.id").
+		Joins("JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id").
+		Where("advent_calendars.cellar_id = ?", cellarID).
+		Where("advent_calendar_beers.advent_calendar_id = ?", calendarID).
+		Where("advent_calendar_beers.day = ?", day).
+		First(&filter)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return &filter, nil
 }
