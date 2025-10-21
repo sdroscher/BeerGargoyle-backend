@@ -36,12 +36,12 @@ jobs:
       
     - name: Generate Dart client
       run: |
-        cd backend; buf generate protobuf --template buf.gen.dart.yaml
+        cd backend; buf generate protobuf --template buf.gen.dart.yaml --clean
         
     - name: Copy generated files to dart client
       run: |
         # Copy generated files
-        cp -r backend/dart-client/* dart-client/lib/
+        cp -r -v backend/dart-client/* dart-client/lib/
         
         # Create library export file
         cat > dart-client/lib/beergargoyle_client.dart << 'EOF'
