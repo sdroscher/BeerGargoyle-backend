@@ -3,8 +3,8 @@ syntax = "proto3";
 package api.v1;
 
 import "api/v1/beer.proto";
-import "google/protobuf/timestamp.proto";
 import "api/v1/user.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "BeerGargoyle/pkg/server/grpc/api/v1";
 
@@ -28,7 +28,7 @@ service CellarService {
   rpc GetAdventCalendar(GetAdventCalendarRequest) returns (GetAdventCalendarResponse) {}
   rpc DeleteAdventCalendar(DeleteAdventCalendarRequest) returns (DeleteAdventCalendarResponse) {}
   rpc RegenerateAdventCalendarDay(RegenerateAdventCalendarDayRequest) returns (RegenerateAdventCalendarDayResponse) {}
-//  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
+  //  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
 }
 
 message AddCellarRequest {
@@ -210,7 +210,7 @@ message UpdateBeerRequest {
   optional Tags tags = 11;
 }
 
-message UpdateBeerResponse{
+message UpdateBeerResponse {
   CellarBeer beer = 1;
 }
 
@@ -239,7 +239,7 @@ message AdventCalendarBeer {
   bool revealed = 3;
 }
 
-message CreateAdventCalendarRequest{
+message CreateAdventCalendarRequest {
   uint64 cellar_id = 1;
   string name = 2;
   string description = 3;
@@ -248,19 +248,19 @@ message CreateAdventCalendarRequest{
   repeated CellarFilter filters = 6;
 }
 
-message CreateAdventCalendarResponse{
+message CreateAdventCalendarResponse {
   AdventCalendar advent_calendar = 1;
 }
 
-message UpdateAdventCalendarRequest{
+message UpdateAdventCalendarRequest {
   uint64 cellar_id = 1;
   uint64 id = 2;
   google.protobuf.Timestamp reveal_day = 3;
 }
 
-message UpdateAdventCalendarResponse{}
+message UpdateAdventCalendarResponse {}
 
-message GetAdventCalendarRequest{
+message GetAdventCalendarRequest {
   uint64 cellar_id = 1;
   oneof criteria {
     uint64 id = 2;
@@ -269,23 +269,23 @@ message GetAdventCalendarRequest{
   }
 }
 
-message GetAdventCalendarResponse{
+message GetAdventCalendarResponse {
   optional AdventCalendar advent_calendar = 1;
 }
 
-message DeleteAdventCalendarRequest{
+message DeleteAdventCalendarRequest {
   uint64 cellar_id = 1;
   uint64 id = 2;
 }
 
-message DeleteAdventCalendarResponse{}
+message DeleteAdventCalendarResponse {}
 
-message RegenerateAdventCalendarDayRequest{
+message RegenerateAdventCalendarDayRequest {
   uint64 cellar_id = 1;
   uint64 advent_calendar_id = 2;
   google.protobuf.Timestamp day = 3;
 }
 
-message RegenerateAdventCalendarDayResponse{
+message RegenerateAdventCalendarDayResponse {
   AdventCalendarBeer beer = 1;
 }

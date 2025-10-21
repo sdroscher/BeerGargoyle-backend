@@ -20,7 +20,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         path: backend
-        
+
     - name: Checkout dart client repo
       uses: actions/checkout@v4
       with:
@@ -29,12 +29,14 @@ jobs:
         path: dart-client
         
     - name: Setup Buf
-      uses: bufbuild/buf-setup-action@v1.28.1
+      uses: bufbuild/buf-action@v1
+      with:
+        input: backend/protobuf
+        setup_only: true
       
     - name: Generate Dart client
       run: |
-        cd backend
-        buf generate protobuf --template buf.gen.dart.yaml
+        cd backend; buf generate protobuf --template buf.gen.dart.yaml
         
     - name: Copy generated files to dart client
       run: |
