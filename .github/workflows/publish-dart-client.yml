@@ -17,12 +17,12 @@ jobs:
     
     steps:
     - name: Checkout backend repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         path: backend
 
     - name: Checkout dart client repo
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: sdroscher/beergargoyle-dart-client
         token: ${{ secrets.DART_CLIENT_TOKEN }}
