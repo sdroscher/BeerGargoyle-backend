@@ -425,6 +425,7 @@ func (c *CellarServer) createAdventCalendar(ctx context.Context, cellarID uint64
 			CellarEntryID: uint(recommendation.GetCellarEntryId()),
 			Day:           day,
 			Revealed:      false,
+			Filter:        grpc.CellarFilterToModel(filters[index]),
 		}
 
 		pbBeer := api.AdventCalendarBeer{
