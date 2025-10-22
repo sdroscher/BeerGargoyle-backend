@@ -131,6 +131,86 @@ func BreweryToModel(pbBrewery *api.Brewery) model.Brewery {
 	return brewery
 }
 
+//nolint:cyclop,funlen // this many ifs required for optional fields
+func CellarFilterToModel(pbFilter *api.CellarFilter) model.AdventCalendarFilter {
+	filter := model.AdventCalendarFilter{}
+
+	if pbFilter == nil {
+		return filter
+	}
+
+	if pbFilter.BreweryId != nil {
+		filter.BreweryID = pointy.Uint64(pbFilter.GetBreweryId())
+	}
+
+	if pbFilter.MinimumAbv != nil {
+		filter.MinimumAbv = pointy.Float64(pbFilter.GetMinimumAbv())
+	}
+
+	if pbFilter.MaximumAbv != nil {
+		filter.MaximumAbv = pointy.Float64(pbFilter.GetMaximumAbv())
+	}
+
+	if pbFilter.StyleId != nil {
+		filter.StyleID = pointy.Uint64(pbFilter.GetStyleId())
+	}
+
+	if pbFilter.MinimumVintage != nil {
+		filter.MinimumVintage = pointy.Uint64(pbFilter.GetMinimumVintage())
+	}
+
+	if pbFilter.MaximumVintage != nil {
+		filter.MaximumVintage = pointy.Uint64(pbFilter.GetMaximumVintage())
+	}
+
+	if pbFilter.OverdueToDrink != nil {
+		filter.OverdueToDrink = pointy.Bool(pbFilter.GetOverdueToDrink())
+	}
+
+	if pbFilter.HadBefore != nil {
+		filter.HadBefore = pointy.Bool(pbFilter.GetHadBefore())
+	}
+
+	if pbFilter.Special != nil {
+		filter.Special = pointy.Bool(pbFilter.GetSpecial())
+	}
+
+	if pbFilter.MinimumQuantity != nil {
+		filter.MinimumQuantity = pointy.Int64(pbFilter.GetMinimumQuantity())
+	}
+
+	if pbFilter.MinimumSize != nil {
+		filter.MinimumSize = pointy.Int64(pbFilter.GetMinimumSize())
+	}
+
+	if pbFilter.MaximumSize != nil {
+		filter.MaximumSize = pointy.Int64(pbFilter.GetMaximumSize())
+	}
+
+	if pbFilter.MinimumRating != nil {
+		filter.MinimumRating = pointy.Float64(pbFilter.GetMinimumRating())
+	}
+
+	if pbFilter.MaximumRating != nil {
+		filter.MaximumRating = pointy.Float64(pbFilter.GetMaximumRating())
+	}
+
+	if pbFilter.AddedBefore != nil {
+		addedBefore := pbFilter.AddedBefore.AsTime()
+		filter.AddedBefore = &addedBefore
+	}
+
+	if len(pbFilter.Tags) > 0 {
+		tags := make([]model.Tag, 0, len(pbFilter.Tags))
+		for _, tagName := range pbFilter.Tags {
+			tags = append(tags, model.Tag{Tag: tagName})
+		}
+		filter.Tags = tags
+	}
+
+	return filter
+}
+
 func AddressToModel(pbAddress *api.Address) model.Address {
 	return model.Address{
 		Country:       pbAddress.Country,

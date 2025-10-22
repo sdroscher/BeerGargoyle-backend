@@ -39,7 +39,7 @@ tasks:
     desc: Update the database schema
     deps: [build]
     cmds:
-      - gow run . migrate
+      - go run . migrate
 
   lint:
     desc: Run linting
