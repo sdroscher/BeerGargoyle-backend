@@ -30,7 +30,7 @@ jobs:
           mockery-version: 3.5.1
 
       - name: Generate mocks
-        run: mockery
+        run: go generate ./...
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8

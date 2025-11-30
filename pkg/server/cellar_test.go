@@ -14,11 +14,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 
-	"droscher.com/BeerGargoyle/mocks"
+	apiv1 "droscher.com/BeerGargoyle/generated/grpc/api/v1"
+	"droscher.com/BeerGargoyle/generated/mocks"
 	"droscher.com/BeerGargoyle/pkg/auth"
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/server"
-	apiv1 "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
 )
 
 type CellarTestSuite struct {

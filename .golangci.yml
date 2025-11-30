@@ -56,6 +56,7 @@ linters:
       - third_party$
       - builtin$
       - examples$
+      - generated/
 formatters:
   enable:
     - gci
@@ -74,3 +75,4 @@ formatters:
       - third_party$
       - builtin$
       - examples$
+      - generated/

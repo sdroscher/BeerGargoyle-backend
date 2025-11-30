@@ -34,7 +34,7 @@ jobs:
           mockery-version: 3.5.1
 
       - name: Generate mocks
-        run: mockery
+        run: go generate ./...
         
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - run: flyctl deploy --remote-only

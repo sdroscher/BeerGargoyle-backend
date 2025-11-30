@@ -4,7 +4,10 @@ import "gorm.io/gorm"
 
 type BeerStyle struct {
 	gorm.Model
-	Name string `gorm:"uniqueIndex"`
+	Name        string `gorm:"uniqueIndex"`
+	BJCPStyleID string `gorm:"index:idx_beer_style_bjcp"`
+
+	BJCPStyle BeerStyleBJCP `gorm:"foreignKey:BJCPStyleID;references:BJCPID"`
 }
 
 type Beer struct {
@@ -35,4 +38,25 @@ type BeerFormat struct {
 type Tag struct {
 	gorm.Model
 	Tag string
+}
+
+type BeerStyleBJCP struct {
+	BJCPID     string `gorm:"primaryKey"`
+	Name       string `gorm:"uniqueIndex"`
+	CategoryID uint   `gorm:"index"`
+	FamilyID   uint   `gorm:"index"`
+
+	Category BeerCategoryBJCP `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	Family   BeerStyleFamily  `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+}
+
+type BeerCategoryBJCP struct {
+	gorm.Model
+
+	Name string `gorm:"uniqueIndex"`
+}
+type BeerStyleFamily struct {
+	gorm.Model
+
+	Name string `gorm:"uniqueIndex"`
 }

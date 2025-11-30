@@ -7,9 +7,11 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
 	"droscher.com/BeerGargoyle/pkg/model"
-	api "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
 )
+
+//go:generate sh -c "cd ../../ && mockery"
 
 type CellarRepository interface { //nolint:interfacebloat // this is an acceptable interface
 	AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error)
@@ -153,6 +155,9 @@ func (r *Repository) GetCellarBeers(ctx context.Context, cellarID uint) ([]*mode
 		Preload("Beer.Brewery").
 		Preload("Beer.Brewery.Address").
 		Preload("Beer.Style").
+		Preload("Beer.Style.BJCPStyle").
+		Preload("Beer.Style.BJCPStyle.Family").
+		Preload("Beer.Style.BJCPStyle.Category").
 		Where("cellar_entries.cellar_id = ?", cellarID).
 		Find(&beers)
 	if result.Error != nil {
@@ -184,13 +189,16 @@ func (r *Repository) FindBeerRecommendations(ctx context.Context, cellarID uint6
 		Joins("Location").
 		Joins("Format").
 		Joins("Cellar").
+		Joins("Beer.Style").
+		Joins("Beer.Style.BJCPStyle").
+		Joins("Beer.Style.BJCPStyle.Family").
+		Joins("Beer.Style.BJCPStyle.Category").
 		Preload("Tags").
 		Preload("Beer.Brewery").
 		Preload("Beer.Brewery.Address").
-		Preload("Beer.Style").
 		Where("cellar_entries.cellar_id = ?", cellarID)
 
-	updateQueryWithCriteria(filter, query)
+	query = updateQueryWithCriteria(filter, query)
 
 	if result := query.Find(&beers); result.Error != nil {
 		return nil, result.Error
@@ -199,8 +207,8 @@ func (r *Repository) FindBeerRecommendations(ctx context.Context, cellarID uint6
 	return beers, nil
 }
 
-//nolint:cyclop // this is as simple as it can be given the number of parameters
-func updateQueryWithCriteria(filter *api.CellarFilter, query *gorm.DB) {
+//nolint:cyclop,funlen // this is as simple as it can be given the number of parameters
+func updateQueryWithCriteria(filter *api.CellarFilter, query *gorm.DB) *gorm.DB {
 	if filter.BreweryId != nil {
 		query = query.Where(`"Beer".brewery_id = ?`, filter.GetBreweryId())
 	}
@@ -238,32 +246,42 @@ func updateQueryWithCriteria(filter *api.CellarFilter, query *gorm.DB) {
 	}
 
 	if filter.StyleId != nil {
-		query.Where(`"Beer".style_id = ?`, filter.GetStyleId())
+		query = query.Where(`"Beer".style_id = ?`, filter.GetStyleId())
+	}
+
+	if filter.BjcpStyleId != nil {
+		query = query.Where(`"Beer__Style__BJCPStyle".bjcp_id = ?`, filter.GetBjcpStyleId())
+	}
+
+	if filter.StyleFamilyId != nil {
+		query = query.Where(`"Beer__Style__BJCPStyle".family_id = ?`, filter.GetStyleFamilyId())
 	}
 
 	if filter.OverdueToDrink != nil {
-		query.Where("drink_before < ?", time.Now())
+		query = query.Where("drink_before < ?", time.Now())
 	}
 
 	if filter.MinimumQuantity != nil {
-		query.Where("quantity >= ?", filter.GetMinimumQuantity())
+		query = query.Where("quantity >= ?", filter.GetMinimumQuantity())
 	}
 
 	if filter.MinimumVintage != nil {
-		query.Where("vintage >= ?", filter.GetMinimumVintage())
+		query = query.Where("vintage >= ?", filter.GetMinimumVintage())
 	}
 
 	if filter.MaximumVintage != nil {
-		query.Where("vintage <= ?", filter.GetMaximumVintage())
+		query = query.Where("vintage <= ?", filter.GetMaximumVintage())
 	}
 
 	if len(filter.GetTags()) > 0 {
-		query.Where("cellar_entries.id IN (SELECT cellar_entry_id FROM cellar_entry_tags INNER JOIN tags ON tag_id = tags.id WHERE tag IN ? GROUP BY cellar_entry_id HAVING COUNT(*) = ?)", filter.GetTags(), len(filter.GetTags()))
+		query = query.Where("cellar_entries.id IN (SELECT cellar_entry_id FROM cellar_entry_tags INNER JOIN tags ON tag_id = tags.id WHERE tag IN ? GROUP BY cellar_entry_id HAVING COUNT(*) = ?)", filter.GetTags(), len(filter.GetTags()))
 	}
 
 	if filter.GetAddedBefore() != nil {
-		query.Where("date_added < ?", filter.GetAddedBefore().AsTime())
+		query = query.Where("date_added < ?", filter.GetAddedBefore().AsTime())
 	}
+
+	return query
 }
 
 func (r *Repository) GetCellarBreweryNames(ctx context.Context, cellarID uint64) ([]*model.Brewery, error) {
@@ -287,11 +305,15 @@ func (r *Repository) GetCellarBreweryNames(ctx context.Context, cellarID uint64)
 func (r *Repository) GetCellarStyles(ctx context.Context, cellarID uint64) ([]*model.BeerStyle, error) {
 	var styles []*model.BeerStyle
 
-	result := r.DB.WithContext(ctx).Table("beer_styles").
-		Joins("INNER JOIN beers b on beer_styles.id = b.style_id").
-		Joins("INNER JOIN cellar_entries ce on b.id = ce.beer_id").
-		Where("ce.cellar_id = ?", cellarID).
-		Distinct("beer_styles.id", "beer_styles.name").
+	result := r.DB.WithContext(ctx).
+		Distinct().
+		Joins("INNER JOIN beers ON beer_styles.id = beers.style_id").
+		Joins("INNER JOIN cellar_entries ON beers.id = cellar_entries.beer_id").
+		Where("cellar_entries.cellar_id = ?", cellarID).
+		Where("cellar_entries.deleted_at IS NULL").
+		Preload("BJCPStyle").
+		Preload("BJCPStyle.Category").
+		Preload("BJCPStyle.Family").
 		Order("beer_styles.name asc").
 		Find(&styles)
 
@@ -345,6 +367,9 @@ func (r *Repository) GetAdventCalendarByID(ctx context.Context, cellarID uint64,
 		Preload("Beers.CellarEntry.Beer").
 		Preload("Beers.CellarEntry.Beer.Brewery").
 		Preload("Beers.CellarEntry.Beer.Style").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).
@@ -365,6 +390,9 @@ func (r *Repository) GetAdventCalendarForDate(ctx context.Context, cellarID uint
 		Preload("Beers.CellarEntry.Beer").
 		Preload("Beers.CellarEntry.Beer.Brewery").
 		Preload("Beers.CellarEntry.Beer.Style").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).
@@ -386,6 +414,9 @@ func (r *Repository) GetAdventCalendarByName(ctx context.Context, cellarID uint6
 		Preload("Beers.CellarEntry.Beer").
 		Preload("Beers.CellarEntry.Beer.Brewery").
 		Preload("Beers.CellarEntry.Beer.Style").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
+		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).

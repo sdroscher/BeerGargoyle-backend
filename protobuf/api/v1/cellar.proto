@@ -144,6 +144,8 @@ message CellarFilter {
   optional double maximum_rating = 14;
   repeated string tags = 15;
   google.protobuf.Timestamp added_before = 16;
+  optional uint64 style_family_id = 17;
+  optional string bjcp_style_id = 18;
 }
 
 message RecommendBeerRequest {

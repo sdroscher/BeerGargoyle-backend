@@ -8,9 +8,9 @@ import (
 	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 
+	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
+	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
 	"droscher.com/BeerGargoyle/pkg/repository"
-	api "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
-	"droscher.com/BeerGargoyle/pkg/server/grpc/api/v1/apiv1connect"
 )
 
 var ErrUserNotFound = errors.New("user not found")

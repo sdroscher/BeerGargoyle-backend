@@ -34,7 +34,8 @@ func (m *MigrateCmd) Run(_ *Context) error {
 
 	err = repo.DB.AutoMigrate(
 		&model.Address{}, &model.Brewery{},
-		&model.BeerStyle{}, &model.BeerFormat{}, &model.Beer{},
+		&model.BeerCategoryBJCP{}, &model.BeerStyleFamily{}, &model.BeerStyleBJCP{}, &model.BeerStyle{},
+		&model.BeerFormat{}, &model.Beer{},
 		&model.User{},
 		&model.Cellar{}, &model.LocationInCellar{}, &model.CellarEntry{},
 		&model.AdventCalendar{}, &model.AdventCalendarBeer{}, &model.AdventCalendarFilter{})

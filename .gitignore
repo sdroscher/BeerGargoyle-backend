@@ -38,18 +38,10 @@ BeerGargoyle
 vendor/
 
 # Generated files
-pkg/server/grpc/api/
-mocks
+generated/
 
 # Mac files
 .DS_Store
-
-**/node_modules
-frontend/src/grpc
-frontend/.yarn/*
-!.yarn/releases
-!.yarn/plugins
-.pnp.*
 
 cover.out
 
