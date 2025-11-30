@@ -3,11 +3,11 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: droscher.com/BeerGargoyle/pkg/server/grpc
+      value: droscher.com/BeerGargoyle/generated/grpc
 plugins:
   - remote: buf.build/protocolbuffers/go
-    out: pkg/server/grpc
+    out: generated/grpc
     opt: paths=source_relative
   - remote: buf.build/bufbuild/connect-go
-    out: pkg/server/grpc
+    out: generated/grpc
     opt: paths=source_relative

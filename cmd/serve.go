@@ -14,10 +14,10 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"droscher.com/BeerGargoyle/configs"
+	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
 	"droscher.com/BeerGargoyle/pkg/auth"
 	"droscher.com/BeerGargoyle/pkg/repository"
 	"droscher.com/BeerGargoyle/pkg/server"
-	"droscher.com/BeerGargoyle/pkg/server/grpc/api/v1/apiv1connect"
 )
 
 const timeout = 5 * time.Second

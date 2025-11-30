@@ -35,6 +35,19 @@ message Beer {
 message BeerStyle {
   uint64 id = 1;
   string name = 2;
+  BeerStyleBJCP bjcp_style = 3;
+}
+
+message BeerStyleBJCP {
+  string id = 1;
+  string name = 2;
+  string category = 3;
+  BeerStyleFamily family = 4;
+}
+
+message BeerStyleFamily {
+  uint64 id = 1;
+  string name = 2;
 }
 
 message Brewery {

@@ -1,11 +1,13 @@
 package grpc
 
 import (
+	"fmt"
+
 	"go.openly.dev/pointy"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
 	"droscher.com/BeerGargoyle/pkg/model"
-	api "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
 )
 
 func BeersFromModel(beers []model.Beer) []*api.Beer {
@@ -47,7 +49,7 @@ func BeerFromModel(beer model.Beer) *api.Beer {
 		Id:          uint64(beer.ID),
 		Name:        beer.Name,
 		Description: beer.Description,
-		Style:       &api.BeerStyle{Name: beer.Style.Name},
+		Style:       BeerStyleFromModel(beer.Style),
 		ImageUrl:    pointy.String(beer.ImageURL),
 		Brewery:     &brewery,
 	}
@@ -73,6 +75,22 @@ func BeerFromModel(beer model.Beer) *api.Beer {
 	}
 
 	return &pbBeer
+}
+
+func BeerStyleFromModel(beerStyle model.BeerStyle) *api.BeerStyle {
+	return &api.BeerStyle{
+		Id:   uint64(beerStyle.ID),
+		Name: beerStyle.Name,
+		BjcpStyle: &api.BeerStyleBJCP{
+			Id:       beerStyle.BJCPStyle.BJCPID,
+			Name:     beerStyle.BJCPStyle.Name,
+			Category: fmt.Sprintf("%d. %s", beerStyle.BJCPStyle.Category.ID, beerStyle.BJCPStyle.Category.Name),
+			Family: &api.BeerStyleFamily{
+				Id:   uint64(beerStyle.BJCPStyle.Family.ID),
+				Name: beerStyle.BJCPStyle.Family.Name,
+			},
+		},
+	}
 }
 
 func BeerToModel(pbBeer *api.Beer) model.Beer {
@@ -387,8 +405,8 @@ func StylesFromModel(styles []*model.BeerStyle) []*api.BeerStyle {
 
 	for index := range styles {
 		style := styles[index]
-		pbStyle := api.BeerStyle{Id: uint64(style.ID), Name: style.Name}
-		pbStyles = append(pbStyles, &pbStyle)
+		pbStyle := BeerStyleFromModel(*style)
+		pbStyles = append(pbStyles, pbStyle)
 	}
 
 	return pbStyles

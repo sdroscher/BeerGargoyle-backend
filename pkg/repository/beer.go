@@ -42,14 +42,13 @@ func (r *Repository) FindBreweryByExternalSource(ctx context.Context, externalID
 	return brewery, nil
 }
 
-func (r *Repository) AddBeerStyle(ctx context.Context, style string) (*model.BeerStyle, error) {
-	beerStyle := model.BeerStyle{Name: style}
+func (r *Repository) AddBeerStyle(ctx context.Context, beerStyle model.BeerStyle) (*model.BeerStyle, error) {
 	if result := r.DB.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&beerStyle); result.Error != nil {
 		return nil, result.Error
 	}
 
 	if beerStyle.ID == 0 {
-		if result := r.DB.WithContext(ctx).Where("name = ?", style).First(&beerStyle); result.Error != nil {
+		if result := r.DB.WithContext(ctx).Where("name = ?", beerStyle.Name).First(&beerStyle); result.Error != nil {
 			return nil, result.Error
 		}
 	}

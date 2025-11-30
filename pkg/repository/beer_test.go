@@ -72,16 +72,54 @@ func (suite *BeerTestSuite) TestFindBreweryByExternalSource_ReturnsErrorWhenNoRe
 
 func (suite *BeerTestSuite) TestAddBeerStyle_AddsBeer() {
 	suite.mock.ExpectBegin()
-	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "beer_styles" ("created_at","updated_at","deleted_at","name") VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING "id"`)).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "New Style!").
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "beer_styles" ("created_at","updated_at","deleted_at","name","bjcp_style_id") VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "New Style!", "OTHER").
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(1)))
 	suite.mock.ExpectCommit()
 
-	style, err := suite.repository.AddBeerStyle(context.Background(), "New Style!")
+	beerStyle := model.BeerStyle{Name: "New Style!", BJCPStyleID: "OTHER"}
+	style, err := suite.repository.AddBeerStyle(context.Background(), beerStyle)
 	suite.Require().NoError(err)
 	suite.NotNil(style)
 	suite.Equal(uint(1), style.ID)
 	suite.Equal("New Style!", style.Name)
+}
+
+func (suite *BeerTestSuite) TestAddBeerStyle_AddsStyleWithProvidedBJCPID() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "beer_styles" ("created_at","updated_at","deleted_at","name","bjcp_style_id") VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "American IPA", "21A").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(5)))
+	suite.mock.ExpectCommit()
+
+	beerStyle := model.BeerStyle{Name: "American IPA", BJCPStyleID: "21A"}
+	style, err := suite.repository.AddBeerStyle(context.Background(), beerStyle)
+	suite.Require().NoError(err)
+	suite.NotNil(style)
+	suite.Equal(uint(5), style.ID)
+	suite.Equal("American IPA", style.Name)
+	suite.Equal("21A", style.BJCPStyleID)
+}
+
+func (suite *BeerTestSuite) TestAddBeerStyle_DefaultsToOTHERWhenNotProvided() {
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "beer_styles" ("created_at","updated_at","deleted_at","name","bjcp_style_id") VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, "Custom Style", "").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(0)))
+	suite.mock.ExpectCommit()
+
+	// When ID is 0, it means there was a conflict and we need to fetch the existing record
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_styles" WHERE name = $1 AND "beer_styles"."deleted_at" IS NULL ORDER BY "beer_styles"."id" LIMIT $2`)).
+		WithArgs("Custom Style", 1).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "bjcp_style_id"}).AddRow(uint(3), "Custom Style", "OTHER"))
+
+	beerStyle := model.BeerStyle{Name: "Custom Style", BJCPStyleID: ""}
+	style, err := suite.repository.AddBeerStyle(context.Background(), beerStyle)
+	suite.Require().NoError(err)
+	suite.NotNil(style)
+	suite.Equal(uint(3), style.ID)
+	suite.Equal("Custom Style", style.Name)
+	suite.Equal("OTHER", style.BJCPStyleID)
 }
 
 func (suite *BeerTestSuite) TestGetBeerFormats_GetsFormats() {

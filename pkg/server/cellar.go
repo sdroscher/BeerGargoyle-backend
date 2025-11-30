@@ -14,12 +14,12 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
+	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
 	"droscher.com/BeerGargoyle/pkg/auth"
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/repository"
 	"droscher.com/BeerGargoyle/pkg/server/grpc"
-	api "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
-	"droscher.com/BeerGargoyle/pkg/server/grpc/api/v1/apiv1connect"
 )
 
 type CellarServer struct {

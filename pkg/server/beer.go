@@ -8,12 +8,12 @@ import (
 	"go.uber.org/zap"
 
 	"droscher.com/BeerGargoyle/configs"
+	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
+	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
 	"droscher.com/BeerGargoyle/pkg/integrations"
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/repository"
 	"droscher.com/BeerGargoyle/pkg/server/grpc"
-	api "droscher.com/BeerGargoyle/pkg/server/grpc/api/v1"
-	"droscher.com/BeerGargoyle/pkg/server/grpc/api/v1/apiv1connect"
 )
 
 type BeerServer struct {
@@ -82,7 +82,11 @@ func (b *BeerServer) assignBeerStyle(ctx context.Context, beerStyle *api.BeerSty
 	if beerStyle.GetId() != 0 {
 		beer.StyleID = uint(beerStyle.GetId())
 	} else {
-		style, err := b.repository.AddBeerStyle(ctx, beerStyle.GetName())
+		modelStyle := model.BeerStyle{Name: beerStyle.GetName(), BJCPStyleID: beerStyle.GetBjcpStyle().GetId()}
+		if len(beerStyle.GetBjcpStyle().GetId()) == 0 {
+			modelStyle.BJCPStyleID = "OTHER"
+		}
+		style, err := b.repository.AddBeerStyle(ctx, modelStyle)
 		if err != nil {
 			return err
 		}
