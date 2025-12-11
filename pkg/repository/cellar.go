@@ -282,7 +282,7 @@ func updateQueryWithCriteria(filter *api.CellarFilter, query *gorm.DB) *gorm.DB 
 	}
 
 	if filter.PackageType != nil {
-		query = query.Where(`"Format".package_type = ?`, filter.GetPackageType())
+		query = query.Where(`"Format".package = ?`, filter.GetPackageType())
 	}
 
 	return query
