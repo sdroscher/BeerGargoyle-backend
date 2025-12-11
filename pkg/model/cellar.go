@@ -102,6 +102,7 @@ type AdventCalendarFilter struct {
 	MaximumSize     *int64
 	MinimumRating   *float64
 	MaximumRating   *float64
+	PackageType     *string
 	Tags            []Tag `gorm:"many2many:advent_calendar_filter_tags;"`
 	AddedBefore     *time.Time
 }

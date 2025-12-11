@@ -281,6 +281,10 @@ func updateQueryWithCriteria(filter *api.CellarFilter, query *gorm.DB) *gorm.DB 
 		query = query.Where("date_added < ?", filter.GetAddedBefore().AsTime())
 	}
 
+	if filter.PackageType != nil {
+		query = query.Where(`"Format".package_type = ?`, filter.GetPackageType())
+	}
+
 	return query
 }
 
