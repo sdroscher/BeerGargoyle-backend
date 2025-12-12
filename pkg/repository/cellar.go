@@ -374,6 +374,7 @@ func (r *Repository) GetAdventCalendarByID(ctx context.Context, cellarID uint64,
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
+		Preload("Beers.CellarEntry.Format").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).
@@ -397,6 +398,7 @@ func (r *Repository) GetAdventCalendarForDate(ctx context.Context, cellarID uint
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
+		Preload("Beers.CellarEntry.Format").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).
@@ -421,6 +423,7 @@ func (r *Repository) GetAdventCalendarByName(ctx context.Context, cellarID uint6
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Category").
 		Preload("Beers.CellarEntry.Beer.Style.BJCPStyle.Family").
+		Preload("Beers.CellarEntry.Format").
 		Preload("Beers.CellarEntry.Location").
 		Preload("Beers.CellarEntry.Tags").
 		Where("cellar_id = ?", cellarID).
