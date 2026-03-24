@@ -11,4 +11,5 @@ packages:
     config:
       all: false
     interfaces:
+      ActivityRepository: {}
       CellarRepository: {}

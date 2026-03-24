@@ -24,6 +24,7 @@ import (
 type CellarTestSuite struct {
 	suite.Suite
 	cellarRepo   *mocks.CellarRepository
+	activityRepo *mocks.ActivityRepository
 	service      *server.CellarServer
 	observedLogs *observer.ObservedLogs
 }
@@ -34,10 +35,11 @@ func TestCellarTestSuite(t *testing.T) {
 
 func (suite *CellarTestSuite) SetupTest() {
 	suite.cellarRepo = mocks.NewCellarRepository(suite.T())
+	suite.activityRepo = mocks.NewActivityRepository(suite.T())
 	observedZapCore, observedLogs := observer.New(zap.InfoLevel)
 	suite.observedLogs = observedLogs
 	observedLogger := zap.New(observedZapCore)
-	suite.service = server.NewCellarServer(suite.cellarRepo, nil, nil, observedLogger)
+	suite.service = server.NewCellarServer(suite.cellarRepo, nil, nil, suite.activityRepo, observedLogger)
 }
 
 func (suite *CellarTestSuite) TestCreateAdventCalendar_ErrorMissingFilters() {
@@ -565,4 +567,43 @@ func (suite *CellarTestSuite) TestRegenerateAdventCalendarDay_Success() {
 	beer := result.Msg.GetBeer()
 	suite.NotNil(beer)
 	suite.Equal(uint64(30), beer.GetBeer().GetCellarEntryId())
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_CreatesActivity() {
+	ctx := context.Background()
+	cellarID := uint64(1)
+	beerID := uint64(5)
+
+	cellar := &model.Cellar{Model: gorm.Model{ID: 1}}
+	entry := &model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		BeerID:   5,
+		Quantity: 3,
+	}
+	fullEntry := &model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		Quantity: 3,
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}},
+	}
+
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(cellarID)).Return(cellar, nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellar(ctx, mock.AnythingOfType("model.CellarEntry")).Return(entry, nil)
+	suite.activityRepo.EXPECT().CreateActivity(ctx, mock.MatchedBy(func(act *model.Activity) bool {
+		return act.CellarID == 1 &&
+			act.CellarEntryID != nil && *act.CellarEntryID == 10 &&
+			act.ActivityType == model.ActivityTypeBeerAdded &&
+			act.Quantity == 3
+	})).Return(&model.Activity{Model: gorm.Model{ID: 1}}, nil)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(fullEntry, nil)
+
+	resp, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId: cellarID,
+		BeerId:   beerID,
+		Quantity: 3,
+	}))
+
+	suite.Require().NoError(err)
+	suite.NotNil(resp.Msg.Beer)
 }

@@ -24,10 +24,11 @@ import (
 
 type CellarServer struct {
 	apiv1connect.UnimplementedCellarServiceHandler
-	logger           *zap.Logger
-	cellarRepository repository.CellarRepository
-	beerRepository   beerRepository
-	userRepository   userRepository
+	logger             *zap.Logger
+	cellarRepository   repository.CellarRepository
+	beerRepository     beerRepository
+	userRepository     userRepository
+	activityRepository repository.ActivityRepository
 }
 
 const (
@@ -48,8 +49,8 @@ type beerRepository interface {
 	GetTagsByNames(ctx context.Context, names []string) (map[string]model.Tag, error)
 }
 
-func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, userRepo userRepository, logger *zap.Logger) *CellarServer {
-	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, userRepository: userRepo, logger: logger}
+func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, userRepo userRepository, activityRepo repository.ActivityRepository, logger *zap.Logger) *CellarServer {
+	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, userRepository: userRepo, activityRepository: activityRepo, logger: logger}
 }
 
 func (c *CellarServer) AddCellar(ctx context.Context, request *connect.Request[api.AddCellarRequest]) (*connect.Response[api.AddCellarResponse], error) {
@@ -173,6 +174,8 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 		return nil, err
 	}
 
+	c.recordBeerAdded(ctx, cellarEntry)
+
 	fullCellarEntry, err := c.cellarRepository.GetCellarEntryByID(ctx, cellarEntry.ID)
 	if err != nil {
 		c.logger.Error("error loading cellar entry after saving", zap.Uint("id", cellarEntry.ID), zap.String("beer", cellarEntry.Beer.Name), zap.Error(err))
@@ -182,6 +185,32 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	reply := api.AddCellarBeerResponse{Beer: grpc.CellarBeerFromModel(fullCellarEntry)}
 
 	return connect.NewResponse(&reply), nil
+}
+
+// recordBeerAdded creates a BEER_ADDED activity for a newly added cellar entry.
+// Failures are logged as warnings and do not affect the calling operation.
+func (c *CellarServer) recordBeerAdded(ctx context.Context, entry *model.CellarEntry) {
+	if c.activityRepository == nil {
+		return
+	}
+
+	occurredAt := time.Now().UTC()
+	if entry.DateAdded != nil {
+		occurredAt = *entry.DateAdded
+	}
+
+	entryID := entry.ID
+
+	_, actErr := c.activityRepository.CreateActivity(ctx, &model.Activity{
+		CellarID:      entry.CellarID,
+		CellarEntryID: &entryID,
+		ActivityType:  model.ActivityTypeBeerAdded,
+		Quantity:      entry.Quantity,
+		OccurredAt:    occurredAt,
+	})
+	if actErr != nil {
+		c.logger.Warn("failed to create BEER_ADDED activity", zap.Uint("cellar_entry_id", entry.ID), zap.Error(actErr))
+	}
 }
 
 func (c *CellarServer) fetchTags(ctx context.Context, requestTags []string) []model.Tag {

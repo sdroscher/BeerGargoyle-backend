@@ -58,7 +58,7 @@ func (s *ServeCmd) Run(_ *Context) error {
 	path, handler = apiv1connect.NewUserServiceHandler(server.NewUserServer(repo, logger), interceptors)
 	mux.Handle(path, handler)
 
-	path, handler = apiv1connect.NewCellarServiceHandler(server.NewCellarServer(repo, repo, repo, logger), interceptors)
+	path, handler = apiv1connect.NewCellarServiceHandler(server.NewCellarServer(repo, repo, repo, repo, logger), interceptors)
 	mux.Handle(path, handler)
 
 	reflector := grpcreflect.NewStaticReflector(grpchealth.HealthV1ServiceName, apiv1connect.BeerServiceName, apiv1connect.UserServiceName, apiv1connect.CellarServiceName)

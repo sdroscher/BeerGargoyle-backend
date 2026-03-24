@@ -29,6 +29,8 @@ service CellarService {
   rpc DeleteAdventCalendar(DeleteAdventCalendarRequest) returns (DeleteAdventCalendarResponse) {}
   rpc RegenerateAdventCalendarDay(RegenerateAdventCalendarDayRequest) returns (RegenerateAdventCalendarDayResponse) {}
   //  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
+
+  rpc RecordConsumption(RecordConsumptionRequest) returns (RecordConsumptionResponse) {}
 }
 
 message AddCellarRequest {
@@ -291,4 +293,38 @@ message RegenerateAdventCalendarDayRequest {
 
 message RegenerateAdventCalendarDayResponse {
   AdventCalendarBeer beer = 1;
+}
+
+// ── Activity ────────────────────────────────────────────────────────────────
+
+enum ActivityEventType {
+  ACTIVITY_EVENT_TYPE_UNSPECIFIED   = 0;
+  ACTIVITY_EVENT_TYPE_BEER_ADDED    = 1;
+  ACTIVITY_EVENT_TYPE_BEER_CONSUMED = 2;
+}
+
+// One entry in the activity feed.
+// Display examples:
+//   BEER_ADDED:    "Added 2 473ml cans of Boombox Juicy AF"
+//   BEER_CONSUMED: "Drank a 473ml can of Changing Colours Reclamation ★4.5 — 'Tropical and hazy'"
+message ActivityEvent {
+  uint64                    id          = 1;
+  ActivityEventType         type        = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  CellarBeer                cellar_beer = 4;
+  int64                     quantity    = 5;
+  optional string           note        = 6;
+  optional double           rating      = 7;
+}
+
+message RecordConsumptionRequest {
+  uint64                    cellar_entry_id = 1;
+  int64                     quantity        = 2;
+  google.protobuf.Timestamp consumed_at     = 3;
+  optional string           note            = 4;
+  optional double           rating          = 5;
+}
+
+message RecordConsumptionResponse {
+  ActivityEvent consumption = 1;
 }

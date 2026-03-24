@@ -500,3 +500,24 @@ func CellarFilterFromModel(filter *model.AdventCalendarFilter) *api.CellarFilter
 
 	return &pbFilter
 }
+
+func ActivityEventFromModel(activity *model.Activity, entry *model.CellarEntry) *api.ActivityEvent {
+	eventType := api.ActivityEventType_ACTIVITY_EVENT_TYPE_UNSPECIFIED
+
+	switch activity.ActivityType {
+	case model.ActivityTypeBeerAdded:
+		eventType = api.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_ADDED
+	case model.ActivityTypeBeerConsumed:
+		eventType = api.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_CONSUMED
+	}
+
+	return &api.ActivityEvent{
+		Id:         uint64(activity.ID),
+		Type:       eventType,
+		OccurredAt: timestamppb.New(activity.OccurredAt),
+		CellarBeer: CellarBeerFromModel(entry),
+		Quantity:   activity.Quantity,
+		Note:       activity.Note,
+		Rating:     activity.Rating,
+	}
+}
