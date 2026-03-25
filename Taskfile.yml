@@ -31,6 +31,12 @@ tasks:
     cmds:
       - gow run . serve
 
+  serve-dev:
+    desc: Start the backend server with JWT auth disabled (use x-dev-user-email header)
+    deps: [build]
+    cmds:
+      - gow run . serve --no-auth
+
   migrate:
     desc: Update the database schema
     deps: [build]

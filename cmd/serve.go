@@ -23,7 +23,8 @@ import (
 const timeout = 5 * time.Second
 
 type ServeCmd struct {
-	ConfigFile string `default:".BeerGargoyle.toml" help:"Path to config file" short:"c"`
+	ConfigFile string `default:".BeerGargoyle.toml" help:"Path to config file"                                   short:"c"`
+	NoAuth     bool   `default:"false"              help:"Disable JWT auth; use x-dev-user-email header instead" short:"n"`
 }
 
 func (s *ServeCmd) Run(_ *Context) error {
@@ -47,7 +48,11 @@ func (s *ServeCmd) Run(_ *Context) error {
 	}
 	defer repo.Close()
 
-	authManager := auth.NewAuthManager(conf, repo, logger)
+	if s.NoAuth {
+		logger.Warn("⚠️  NO-AUTH MODE ENABLED — JWT validation is disabled; set x-dev-user-email on each request")
+	}
+
+	authManager := auth.NewAuthManager(conf, repo, s.NoAuth, logger)
 	interceptors := connect.WithInterceptors(authManager.GrpcAuthInterceptor())
 
 	mux := http.NewServeMux()

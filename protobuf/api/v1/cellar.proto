@@ -31,6 +31,7 @@ service CellarService {
   //  rpc ListAdventCalendars(ListAdventCalendarsRequest) returns (ListAdventCalendarsResponse) {} Is this needed?
 
   rpc RecordConsumption(RecordConsumptionRequest) returns (RecordConsumptionResponse) {}
+  rpc GetActivityFeed(GetActivityFeedRequest) returns (GetActivityFeedResponse) {}
 }
 
 message AddCellarRequest {
@@ -327,4 +328,18 @@ message RecordConsumptionRequest {
 
 message RecordConsumptionResponse {
   ActivityEvent consumption = 1;
+}
+
+message GetActivityFeedRequest {
+  uint64                    cellar_id = 1;
+  int32                     page_size = 2;
+  int32                     page      = 3;
+  google.protobuf.Timestamp from      = 4;
+  google.protobuf.Timestamp to        = 5;
+}
+
+message GetActivityFeedResponse {
+  repeated ActivityEvent events   = 1;
+  int32                  total    = 2;
+  bool                   has_more = 3;
 }

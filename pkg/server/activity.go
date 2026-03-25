@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -13,6 +14,8 @@ import (
 	"droscher.com/BeerGargoyle/pkg/model"
 	grpcconv "droscher.com/BeerGargoyle/pkg/server/grpc"
 )
+
+const defaultActivityPageSize = 25
 
 var (
 	ErrEntryNotFound   = errors.New("cellar entry not found")
@@ -79,5 +82,53 @@ func (c *CellarServer) RecordConsumption(ctx context.Context, request *connect.R
 
 	return connect.NewResponse(&api.RecordConsumptionResponse{
 		Consumption: grpcconv.ActivityEventFromModel(created, entry),
+	}), nil
+}
+
+// GetActivityFeed returns a paginated list of activity events for a cellar.
+func (c *CellarServer) GetActivityFeed(ctx context.Context, request *connect.Request[api.GetActivityFeedRequest]) (*connect.Response[api.GetActivityFeedResponse], error) {
+	cellarID := uint(request.Msg.GetCellarId())
+
+	pageSize := int(request.Msg.GetPageSize())
+	if pageSize <= 0 {
+		pageSize = defaultActivityPageSize
+	}
+
+	page := int(request.Msg.GetPage())
+	if page <= 0 {
+		page = 1
+	}
+
+	offset := (page - 1) * pageSize
+
+	var from, until *time.Time
+
+	if request.Msg.GetFrom() != nil {
+		t := request.Msg.GetFrom().AsTime()
+		from = &t
+	}
+
+	if request.Msg.GetTo() != nil {
+		t := request.Msg.GetTo().AsTime()
+		until = &t
+	}
+
+	activities, total, err := c.activityRepository.GetFeed(ctx, cellarID, from, until, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]*api.ActivityEvent, 0, len(activities))
+
+	for _, act := range activities {
+		events = append(events, grpcconv.ActivityEventFromModel(act, act.CellarEntry))
+	}
+
+	totalCount := min(total, math.MaxInt32)
+
+	return connect.NewResponse(&api.GetActivityFeedResponse{
+		Events:  events,
+		Total:   int32(totalCount), //nolint:gosec // clamped to MaxInt32 above
+		HasMore: int64(offset+pageSize) < total,
 	}), nil
 }

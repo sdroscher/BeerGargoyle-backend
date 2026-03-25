@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/bufbuild/connect-go"
 	"github.com/stretchr/testify/mock"
@@ -114,6 +115,76 @@ func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
 	suite.Require().NoError(err)
 	suite.NotNil(resp.Msg.Consumption)
 	suite.NotNil(resp.Msg.Consumption.CellarBeer)
+}
+
+func (suite *ActivityTestSuite) TestGetActivityFeed_Basic() {
+	ctx := context.Background()
+	entryID := uint(10)
+	entry := &model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		Quantity: 3,
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+	}
+	activities := []*model.Activity{
+		{
+			Model:         gorm.Model{ID: 1},
+			CellarID:      1,
+			CellarEntryID: &entryID,
+			ActivityType:  model.ActivityTypeBeerConsumed,
+			Quantity:      1,
+			CellarEntry:   entry,
+		},
+	}
+
+	suite.activityRepo.EXPECT().GetFeed(ctx, uint(1), (*time.Time)(nil), (*time.Time)(nil), 25, 0).
+		Return(activities, int64(1), nil)
+
+	resp, err := suite.service.GetActivityFeed(ctx, connect.NewRequest(&apiv1.GetActivityFeedRequest{
+		CellarId: 1,
+	}))
+
+	suite.Require().NoError(err)
+	suite.Equal(int32(1), resp.Msg.Total)
+	suite.False(resp.Msg.HasMore)
+	suite.Len(resp.Msg.Events, 1)
+	suite.Equal(apiv1.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_CONSUMED, resp.Msg.Events[0].Type)
+}
+
+func (suite *ActivityTestSuite) TestGetActivityFeed_Pagination() {
+	ctx := context.Background()
+	entryID := uint(10)
+	entry := &model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+	}
+
+	activities := make([]*model.Activity, 0, 5)
+
+	for range 5 {
+		activities = append(activities, &model.Activity{
+			CellarID:      1,
+			CellarEntryID: &entryID,
+			ActivityType:  model.ActivityTypeBeerConsumed,
+			Quantity:      1,
+			CellarEntry:   entry,
+		})
+	}
+
+	suite.activityRepo.EXPECT().GetFeed(ctx, uint(1), (*time.Time)(nil), (*time.Time)(nil), 5, 5).
+		Return(activities, int64(15), nil)
+
+	resp, err := suite.service.GetActivityFeed(ctx, connect.NewRequest(&apiv1.GetActivityFeedRequest{
+		CellarId: 1,
+		PageSize: 5,
+		Page:     2,
+	}))
+
+	suite.Require().NoError(err)
+	suite.Equal(int32(15), resp.Msg.Total)
+	suite.True(resp.Msg.HasMore)
+	suite.Len(resp.Msg.Events, 5)
 }
 
 func (suite *ActivityTestSuite) TestRecordConsumption_ExceedsQuantity() {
