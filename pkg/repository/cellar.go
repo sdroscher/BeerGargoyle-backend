@@ -15,7 +15,11 @@ import (
 
 type CellarRepository interface { //nolint:interfacebloat // this is an acceptable interface
 	AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error)
+	// AddBeerToCellarWithActivity atomically creates the cellar entry and a BEER_ADDED activity.
+	AddBeerToCellarWithActivity(ctx context.Context, beer model.CellarEntry, occurredAt time.Time) (*model.CellarEntry, error)
 	AddCellar(ctx context.Context, name string, description string, locations []string, owner model.User) (*model.Cellar, error)
+	// ConsumeEntry atomically creates the activity record and decrements/soft-deletes the entry.
+	ConsumeEntry(ctx context.Context, entry *model.CellarEntry, activity *model.Activity) (*model.Activity, error)
 	DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error
 	DeleteCellarEntry(ctx context.Context, cellarEntryID uint) error
 	FindBeerRecommendations(ctx context.Context, cellarID uint64, filter *api.CellarFilter) ([]*model.CellarEntry, error)
@@ -89,6 +93,30 @@ func (r *Repository) GetCellarByID(ctx context.Context, cellarID uint) (*model.C
 func (r *Repository) AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error) {
 	if result := r.DB.WithContext(ctx).Create(&beer); result.Error != nil {
 		return nil, result.Error
+	}
+
+	return &beer, nil
+}
+
+func (r *Repository) AddBeerToCellarWithActivity(ctx context.Context, beer model.CellarEntry, occurredAt time.Time) (*model.CellarEntry, error) {
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Create(&beer); result.Error != nil {
+			return result.Error
+		}
+
+		entryID := beer.ID
+		activity := model.Activity{
+			CellarID:      beer.CellarID,
+			CellarEntryID: &entryID,
+			ActivityType:  model.ActivityTypeBeerAdded,
+			Quantity:      beer.Quantity,
+			OccurredAt:    occurredAt,
+		}
+
+		return tx.Create(&activity).Error
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &beer, nil
@@ -179,6 +207,26 @@ func (r *Repository) UpdateCellarEntry(ctx context.Context, entry *model.CellarE
 	}
 
 	return entry, nil
+}
+
+// ConsumeEntry atomically creates an activity record and decrements or soft-deletes the cellar entry.
+func (r *Repository) ConsumeEntry(ctx context.Context, entry *model.CellarEntry, activity *model.Activity) (*model.Activity, error) {
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Create(activity); result.Error != nil {
+			return result.Error
+		}
+
+		if entry.Quantity == 0 {
+			return tx.Delete(&model.CellarEntry{}, entry.ID).Error
+		}
+
+		return tx.Save(entry).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return activity, nil
 }
 
 func (r *Repository) FindBeerRecommendations(ctx context.Context, cellarID uint64, filter *api.CellarFilter) ([]*model.CellarEntry, error) {

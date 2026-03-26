@@ -61,23 +61,11 @@ func (c *CellarServer) RecordConsumption(ctx context.Context, request *connect.R
 		Rating:        request.Msg.Rating,
 	}
 
-	created, err := c.activityRepository.CreateActivity(ctx, activity)
-	if err != nil {
-		return nil, err
-	}
-
 	entry.Quantity -= qty
 
-	if entry.Quantity == 0 {
-		err = c.cellarRepository.DeleteCellarEntry(ctx, entry.ID)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		_, updateErr := c.cellarRepository.UpdateCellarEntry(ctx, entry)
-		if updateErr != nil {
-			return nil, updateErr
-		}
+	created, err := c.cellarRepository.ConsumeEntry(ctx, entry, activity)
+	if err != nil {
+		return nil, err
 	}
 
 	return connect.NewResponse(&api.RecordConsumptionResponse{

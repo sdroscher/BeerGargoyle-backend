@@ -251,6 +251,90 @@ func (suite *CellarTestSuite) TestUpdateCellarEntry_UpdatesCellarEntry() {
 	suite.Equal(int64(2), updatedEntry.Quantity)
 }
 
+func (suite *CellarTestSuite) TestAddBeerToCellarWithActivity_CreatesEntryAndActivity() {
+	beer := model.CellarEntry{
+		CellarID: 1,
+		BeerID:   100,
+		Quantity: 3,
+	}
+	occurredAt := time.Now().UTC()
+
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "cellar_entries" ("created_at","updated_at","deleted_at","cellar_id","beer_id","vintage","quantity","location_id","format_id","had_before","date_added","drink_before","cellar_until","special") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, 1, 100, nil, 3, nil, nil, false, nil, nil, nil, false).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(10)))
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "activities" ("created_at","updated_at","deleted_at","cellar_id","cellar_entry_id","activity_type","quantity","occurred_at","note","rating","untappd_checkin_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, 1, 10, model.ActivityTypeBeerAdded, int64(3), sqlmock.AnyArg(), nil, nil, nil).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uint(1)))
+	suite.mock.ExpectCommit()
+
+	entry, err := suite.repository.AddBeerToCellarWithActivity(context.Background(), beer, occurredAt)
+	suite.Require().NoError(err)
+	suite.NotNil(entry)
+	suite.Equal(uint(10), entry.ID)
+}
+
+func (suite *CellarTestSuite) TestConsumeEntry_Decrement() {
+	entryID := uint(10)
+	entry := model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		BeerID:   100,
+		Quantity: 2,
+	}
+	activity := model.Activity{
+		CellarID:      1,
+		CellarEntryID: &entryID,
+		ActivityType:  model.ActivityTypeBeerConsumed,
+		Quantity:      1,
+		OccurredAt:    time.Now().UTC(),
+	}
+
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "activities" ("created_at","updated_at","deleted_at","cellar_id","cellar_entry_id","activity_type","quantity","occurred_at","note","rating","untappd_checkin_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, 1, 10, model.ActivityTypeBeerConsumed, int64(1), sqlmock.AnyArg(), nil, nil, nil).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE "cellar_entries" SET "created_at"=$1,"updated_at"=$2,"deleted_at"=$3,"cellar_id"=$4,"beer_id"=$5,"vintage"=$6,"quantity"=$7,"location_id"=$8,"format_id"=$9,"had_before"=$10,"date_added"=$11,"drink_before"=$12,"cellar_until"=$13,"special"=$14 WHERE "cellar_entries"."deleted_at" IS NULL AND "id" = $15`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, 1, 100, nil, 2, nil, nil, false, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), false, 10).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	suite.mock.ExpectCommit()
+
+	result, err := suite.repository.ConsumeEntry(context.Background(), &entry, &activity)
+	suite.Require().NoError(err)
+	suite.NotNil(result)
+	suite.Equal(model.ActivityTypeBeerConsumed, result.ActivityType)
+}
+
+func (suite *CellarTestSuite) TestConsumeEntry_SoftDeletesOnZeroQuantity() {
+	entryID := uint(10)
+	entry := model.CellarEntry{
+		Model:    gorm.Model{ID: 10},
+		CellarID: 1,
+		BeerID:   100,
+		Quantity: 0,
+	}
+	activity := model.Activity{
+		CellarID:      1,
+		CellarEntryID: &entryID,
+		ActivityType:  model.ActivityTypeBeerConsumed,
+		Quantity:      1,
+		OccurredAt:    time.Now().UTC(),
+	}
+
+	suite.mock.ExpectBegin()
+	suite.mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "activities" ("created_at","updated_at","deleted_at","cellar_id","cellar_entry_id","activity_type","quantity","occurred_at","note","rating","untappd_checkin_id") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING "id"`)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), nil, 1, 10, model.ActivityTypeBeerConsumed, int64(1), sqlmock.AnyArg(), nil, nil, nil).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(2))
+	suite.mock.ExpectExec(regexp.QuoteMeta(`UPDATE "cellar_entries" SET "deleted_at"=$1 WHERE "cellar_entries"."id" = $2 AND "cellar_entries"."deleted_at" IS NULL`)).
+		WithArgs(sqlmock.AnyArg(), 10).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	suite.mock.ExpectCommit()
+
+	result, err := suite.repository.ConsumeEntry(context.Background(), &entry, &activity)
+	suite.Require().NoError(err)
+	suite.NotNil(result)
+}
+
 func (suite *CellarTestSuite) TestGetCellarBeers_GetsBeers() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellar_entries"."id","cellar_entries"."created_at","cellar_entries"."updated_at","cellar_entries"."deleted_at","cellar_entries"."cellar_id","cellar_entries"."beer_id","cellar_entries"."vintage","cellar_entries"."quantity","cellar_entries"."location_id","cellar_entries"."format_id","cellar_entries"."had_before","cellar_entries"."date_added","cellar_entries"."drink_before","cellar_entries"."cellar_until","cellar_entries"."special","Beer"."id" AS "Beer__id","Beer"."created_at" AS "Beer__created_at","Beer"."updated_at" AS "Beer__updated_at","Beer"."deleted_at" AS "Beer__deleted_at","Beer"."name" AS "Beer__name","Beer"."description" AS "Beer__description","Beer"."image_url" AS "Beer__image_url","Beer"."brewery_id" AS "Beer__brewery_id","Beer"."style_id" AS "Beer__style_id","Beer"."abv" AS "Beer__abv","Beer"."ibu" AS "Beer__ibu","Beer"."external_id" AS "Beer__external_id","Beer"."external_source" AS "Beer__external_source","Beer"."external_rating" AS "Beer__external_rating","Location"."id" AS "Location__id","Location"."created_at" AS "Location__created_at","Location"."updated_at" AS "Location__updated_at","Location"."deleted_at" AS "Location__deleted_at","Location"."name" AS "Location__name","Location"."cellar_id" AS "Location__cellar_id","Format"."id" AS "Format__id","Format"."created_at" AS "Format__created_at","Format"."updated_at" AS "Format__updated_at","Format"."deleted_at" AS "Format__deleted_at","Format"."package" AS "Format__package","Format"."size_metric" AS "Format__size_metric","Format"."size_imperial" AS "Format__size_imperial","Cellar"."id" AS "Cellar__id","Cellar"."created_at" AS "Cellar__created_at","Cellar"."updated_at" AS "Cellar__updated_at","Cellar"."deleted_at" AS "Cellar__deleted_at","Cellar"."name" AS "Cellar__name","Cellar"."description" AS "Cellar__description","Cellar"."owner_id" AS "Cellar__owner_id" FROM "cellar_entries" LEFT JOIN "beers" "Beer" ON "cellar_entries"."beer_id" = "Beer"."id" AND "Beer"."deleted_at" IS NULL LEFT JOIN "location_in_cellars" "Location" ON "cellar_entries"."location_id" = "Location"."id" AND "Location"."deleted_at" IS NULL LEFT JOIN "beer_formats" "Format" ON "cellar_entries"."format_id" = "Format"."id" AND "Format"."deleted_at" IS NULL LEFT JOIN "cellars" "Cellar" ON "cellar_entries"."cellar_id" = "Cellar"."id" AND "Cellar"."deleted_at" IS NULL WHERE cellar_entries.cellar_id = $1 AND "cellar_entries"."deleted_at" IS NULL`)).
 		WithArgs(1).

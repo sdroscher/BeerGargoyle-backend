@@ -511,11 +511,16 @@ func ActivityEventFromModel(activity *model.Activity, entry *model.CellarEntry) 
 		eventType = api.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_CONSUMED
 	}
 
+	var cellarBeer *api.CellarBeer
+	if entry != nil {
+		cellarBeer = CellarBeerFromModel(entry)
+	}
+
 	return &api.ActivityEvent{
 		Id:         uint64(activity.ID),
 		Type:       eventType,
 		OccurredAt: timestamppb.New(activity.OccurredAt),
-		CellarBeer: CellarBeerFromModel(entry),
+		CellarBeer: cellarBeer,
 		Quantity:   activity.Quantity,
 		Note:       activity.Note,
 		Rating:     activity.Rating,

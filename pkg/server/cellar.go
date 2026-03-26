@@ -169,12 +169,15 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 		beer.Tags = tags
 	}
 
-	cellarEntry, err := c.cellarRepository.AddBeerToCellar(ctx, beer)
+	occurredAt := time.Now().UTC()
+	if beer.DateAdded != nil {
+		occurredAt = *beer.DateAdded
+	}
+
+	cellarEntry, err := c.cellarRepository.AddBeerToCellarWithActivity(ctx, beer, occurredAt)
 	if err != nil {
 		return nil, err
 	}
-
-	c.recordBeerAdded(ctx, cellarEntry)
 
 	fullCellarEntry, err := c.cellarRepository.GetCellarEntryByID(ctx, cellarEntry.ID)
 	if err != nil {
@@ -185,32 +188,6 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	reply := api.AddCellarBeerResponse{Beer: grpc.CellarBeerFromModel(fullCellarEntry)}
 
 	return connect.NewResponse(&reply), nil
-}
-
-// recordBeerAdded creates a BEER_ADDED activity for a newly added cellar entry.
-// Failures are logged as warnings and do not affect the calling operation.
-func (c *CellarServer) recordBeerAdded(ctx context.Context, entry *model.CellarEntry) {
-	if c.activityRepository == nil {
-		return
-	}
-
-	occurredAt := time.Now().UTC()
-	if entry.DateAdded != nil {
-		occurredAt = *entry.DateAdded
-	}
-
-	entryID := entry.ID
-
-	_, actErr := c.activityRepository.CreateActivity(ctx, &model.Activity{
-		CellarID:      entry.CellarID,
-		CellarEntryID: &entryID,
-		ActivityType:  model.ActivityTypeBeerAdded,
-		Quantity:      entry.Quantity,
-		OccurredAt:    occurredAt,
-	})
-	if actErr != nil {
-		c.logger.Warn("failed to create BEER_ADDED activity", zap.Uint("cellar_entry_id", entry.ID), zap.Error(actErr))
-	}
 }
 
 func (c *CellarServer) fetchTags(ctx context.Context, requestTags []string) []model.Tag {

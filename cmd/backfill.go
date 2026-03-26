@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -11,6 +10,8 @@ import (
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/repository"
 )
+
+const backfillBatchSize = 500
 
 type BackfillCmd struct {
 	ConfigFile string `default:".BeerGargoyle.toml" help:"Path to config file" short:"c"`
@@ -32,7 +33,7 @@ func (b *BackfillCmd) Run(_ *Context) error {
 
 	repo, err := repository.Open(conf, logger)
 	if err != nil {
-		logger.Fatal("error connecting to database")
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer repo.Close()
 
@@ -45,20 +46,21 @@ func (b *BackfillCmd) Run(_ *Context) error {
 		return fmt.Errorf("querying cellar entries: %w", err)
 	}
 
-	var created, skipped int
+	candidates := BuildCandidateActivities(entries)
 
-	for i := range entries {
-		entryCreated, entrySkipped, err := backfillEntry(db, &entries[i])
-		if err != nil {
-			return err
-		}
+	if len(candidates) == 0 {
+		logger.Info("backfill complete: no candidates found")
 
-		created += entryCreated
-		skipped += entrySkipped
+		return nil
+	}
+
+	created, skipped, err := insertNewActivities(db, entries, candidates)
+	if err != nil {
+		return err
 	}
 
 	logger.Info("backfill complete",
-		zap.Int("created", created),
+		zap.Int64("created", created),
 		zap.Int("skipped", skipped),
 		zap.Int("entries_processed", len(entries)),
 	)
@@ -67,68 +69,95 @@ func (b *BackfillCmd) Run(_ *Context) error {
 	return nil
 }
 
-// backfillEntry creates missing Activity records for a single CellarEntry.
-// Returns the number of records created and skipped.
-func backfillEntry(db *gorm.DB, entry *model.CellarEntry) (int, int, error) {
-	entryID := entry.ID
+// BuildCandidateActivities builds the full set of activities that should exist for the given entries.
+func BuildCandidateActivities(entries []model.CellarEntry) []model.Activity {
+	candidates := make([]model.Activity, 0, len(entries))
 
-	occurredAt := entry.CreatedAt
-	if entry.DateAdded != nil {
-		occurredAt = *entry.DateAdded
-	}
+	for i := range entries {
+		entry := &entries[i]
+		entryID := entry.ID
 
-	qty := entry.Quantity
-	if qty <= 0 {
-		qty = 1
-	}
-
-	addedCreated, addedSkipped, err := backfillActivity(db, model.Activity{
-		CellarID:      entry.CellarID,
-		CellarEntryID: &entryID,
-		ActivityType:  model.ActivityTypeBeerAdded,
-		Quantity:      qty,
-		OccurredAt:    occurredAt,
-	})
-	if err != nil {
-		return 0, 0, fmt.Errorf("BEER_ADDED for entry %d: %w", entryID, err)
-	}
-
-	if !entry.DeletedAt.Valid {
-		return addedCreated, addedSkipped, nil
-	}
-
-	consumedCreated, consumedSkipped, err := backfillActivity(db, model.Activity{
-		CellarID:      entry.CellarID,
-		CellarEntryID: &entryID,
-		ActivityType:  model.ActivityTypeBeerConsumed,
-		Quantity:      1, // quantity is 0 in DB at soft-delete time; best guess is 1
-		OccurredAt:    entry.DeletedAt.Time,
-	})
-	if err != nil {
-		return 0, 0, fmt.Errorf("BEER_CONSUMED for entry %d: %w", entryID, err)
-	}
-
-	return addedCreated + consumedCreated, addedSkipped + consumedSkipped, nil
-}
-
-// backfillActivity inserts act if no Activity with the same CellarEntryID and ActivityType exists.
-func backfillActivity(db *gorm.DB, act model.Activity) (int, int, error) {
-	var existing model.Activity
-
-	lookupErr := db.Where("cellar_entry_id = ? AND activity_type = ?", act.CellarEntryID, act.ActivityType).
-		First(&existing).Error
-
-	switch {
-	case errors.Is(lookupErr, gorm.ErrRecordNotFound):
-		createErr := db.Create(&act).Error
-		if createErr != nil {
-			return 0, 0, createErr
+		occurredAt := entry.CreatedAt
+		if entry.DateAdded != nil {
+			occurredAt = *entry.DateAdded
 		}
 
-		return 1, 0, nil
-	case lookupErr != nil:
-		return 0, 0, lookupErr
-	default:
-		return 0, 1, nil
+		qty := entry.Quantity
+		if qty <= 0 {
+			qty = 1
+		}
+
+		candidates = append(candidates, model.Activity{
+			CellarID:      entry.CellarID,
+			CellarEntryID: &entryID,
+			ActivityType:  model.ActivityTypeBeerAdded,
+			Quantity:      qty,
+			OccurredAt:    occurredAt,
+		})
+
+		if entry.DeletedAt.Valid {
+			candidates = append(candidates, model.Activity{
+				CellarID:      entry.CellarID,
+				CellarEntryID: &entryID,
+				ActivityType:  model.ActivityTypeBeerConsumed,
+				// quantity is 0 at soft-delete time so the original value is lost; 1 is a best guess and may under-count multi-unit consumptions
+				Quantity:   1,
+				OccurredAt: entry.DeletedAt.Time,
+			})
+		}
 	}
+
+	return candidates
+}
+
+// insertNewActivities fetches existing activities for the given entries, filters the candidates to
+// only those not already present, and bulk-inserts the remainder. Returns created and skipped counts.
+func insertNewActivities(db *gorm.DB, entries []model.CellarEntry, candidates []model.Activity) (int64, int, error) {
+	entryIDs := make([]uint, 0, len(entries))
+	for i := range entries {
+		entryIDs = append(entryIDs, entries[i].ID)
+	}
+
+	var existing []model.Activity
+
+	err := db.Select("cellar_entry_id, activity_type").
+		Where("cellar_entry_id IN (?)", entryIDs).
+		Find(&existing).Error
+	if err != nil {
+		return 0, 0, fmt.Errorf("querying existing activities: %w", err)
+	}
+
+	type key struct {
+		cellarEntryID uint
+		activityType  model.ActivityType
+	}
+
+	existingSet := make(map[key]struct{}, len(existing))
+
+	for _, act := range existing {
+		if act.CellarEntryID != nil {
+			existingSet[key{*act.CellarEntryID, act.ActivityType}] = struct{}{}
+		}
+	}
+
+	toInsert := make([]model.Activity, 0, len(candidates))
+
+	for _, act := range candidates {
+		if _, found := existingSet[key{*act.CellarEntryID, act.ActivityType}]; !found {
+			toInsert = append(toInsert, act)
+		}
+	}
+
+	skipped := len(candidates) - len(toInsert)
+
+	if len(toInsert) == 0 {
+		return 0, skipped, nil
+	}
+
+	result := db.CreateInBatches(toInsert, backfillBatchSize)
+	if result.Error != nil {
+		return 0, 0, fmt.Errorf("inserting activities: %w", result.Error)
+	}
+
+	return result.RowsAffected, skipped, nil
 }

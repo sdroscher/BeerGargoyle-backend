@@ -103,7 +103,7 @@ func (a *Manager) resolveJWTUser(ctx context.Context, header http.Header) (*mode
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token")
 	}
 
-	a.logger.Info("claims", zap.Any("claims", claims))
+	a.logger.Debug("claims", zap.Any("claims", claims))
 
 	email, found := claims["email"].(string)
 	if !found {

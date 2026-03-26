@@ -589,13 +589,7 @@ func (suite *CellarTestSuite) TestAddCellarBeer_CreatesActivity() {
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(cellarID)).Return(cellar, nil)
-	suite.cellarRepo.EXPECT().AddBeerToCellar(ctx, mock.AnythingOfType("model.CellarEntry")).Return(entry, nil)
-	suite.activityRepo.EXPECT().CreateActivity(ctx, mock.MatchedBy(func(act *model.Activity) bool {
-		return act.CellarID == 1 &&
-			act.CellarEntryID != nil && *act.CellarEntryID == 10 &&
-			act.ActivityType == model.ActivityTypeBeerAdded &&
-			act.Quantity == 3
-	})).Return(&model.Activity{Model: gorm.Model{ID: 1}}, nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx, mock.AnythingOfType("model.CellarEntry"), mock.AnythingOfType("time.Time")).Return(entry, nil)
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(fullEntry, nil)
 
 	resp, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
