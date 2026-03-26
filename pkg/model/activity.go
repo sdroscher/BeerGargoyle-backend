@@ -13,6 +13,30 @@ const (
 	ActivityTypeBeerConsumed ActivityType = "beer_consumed"
 )
 
+type NameCount struct {
+	Name  string
+	Count int64
+}
+
+type MonthlyCount struct {
+	Month int32
+	Count int64
+}
+
+type YearInReview struct {
+	Year          int
+	CellarID      uint
+	BeersConsumed int64
+	UniqueBeers   int64
+	TotalVolumeMl float64
+	AverageRating float64
+	BeersAdded    int64
+	TopStyles     []NameCount
+	TopCategories []NameCount
+	TopBreweries  []NameCount
+	ByMonth       []MonthlyCount
+}
+
 type Activity struct {
 	gorm.Model
 	CellarID         uint         `gorm:"index"`

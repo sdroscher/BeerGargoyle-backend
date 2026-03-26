@@ -132,3 +132,20 @@ func (c *CellarServer) GetActivityFeed(ctx context.Context, request *connect.Req
 		HasMore: int64(offset+pageSize) < total,
 	}), nil
 }
+
+// GetYearInReview returns aggregate consumption and acquisition stats for a cellar year.
+func (c *CellarServer) GetYearInReview(ctx context.Context, request *connect.Request[api.GetYearInReviewRequest]) (*connect.Response[api.GetYearInReviewResponse], error) {
+	year := int(request.Msg.GetYear())
+	if year == 0 {
+		year = time.Now().UTC().Year()
+	}
+
+	yir, err := c.activityRepository.GetYearInReview(ctx, uint(request.Msg.GetCellarId()), year)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&api.GetYearInReviewResponse{
+		YearInReview: grpcconv.YearInReviewFromModel(yir),
+	}), nil
+}

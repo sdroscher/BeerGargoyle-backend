@@ -4,6 +4,7 @@ tasks:
   grpc:
     desc: Generate the gRPC proto code
     cmds:
+      - buf format -w protobuf
       - buf generate protobuf
     sources:
       - protobuf/api/v1/user.proto
@@ -47,6 +48,7 @@ tasks:
     desc: Run linting
     deps: [build]
     cmds:
+      - buf lint protobuf
       - golangci-lint --verbose run
 
   test:

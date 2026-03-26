@@ -207,3 +207,66 @@ func (suite *ActivityTestSuite) TestRecordConsumption_ExceedsQuantity() {
 	suite.Require().ErrorIs(err, server.ErrInvalidQuantity)
 	suite.Nil(resp)
 }
+
+func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
+	ctx := context.Background()
+	yir := &model.YearInReview{
+		Year:          2024,
+		CellarID:      1,
+		BeersConsumed: 42,
+		UniqueBeers:   15,
+		TotalVolumeMl: 19866,
+		AverageRating: 4.1,
+		BeersAdded:    60,
+		TopStyles: []model.NameCount{
+			{Name: "American IPA", Count: 18},
+			{Name: "Imperial Stout", Count: 10},
+		},
+		TopCategories: []model.NameCount{
+			{Name: "IPA", Count: 28},
+			{Name: "Dark Beer", Count: 10},
+		},
+		TopBreweries: []model.NameCount{
+			{Name: "Boombox", Count: 20},
+		},
+		ByMonth: []model.MonthlyCount{
+			{Month: 1, Count: 3},
+			{Month: 6, Count: 12},
+		},
+	}
+
+	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), 2024).Return(yir, nil)
+
+	resp, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
+		CellarId: 1,
+		Year:     2024,
+	}))
+
+	suite.Require().NoError(err)
+	suite.Equal(int32(2024), resp.Msg.YearInReview.Year)
+	suite.Equal(int64(42), resp.Msg.YearInReview.BeersConsumed)
+	suite.Equal(int64(15), resp.Msg.YearInReview.UniqueBeers)
+	suite.Equal(int64(60), resp.Msg.YearInReview.BeersAdded)
+	suite.InDelta(4.1, resp.Msg.YearInReview.AverageRating, 0.001)
+	suite.Len(resp.Msg.YearInReview.TopStyles, 2)
+	suite.Equal("American IPA", resp.Msg.YearInReview.TopStyles[0].Name)
+	suite.Len(resp.Msg.YearInReview.TopCategories, 2)
+	suite.Equal("IPA", resp.Msg.YearInReview.TopCategories[0].Name)
+	suite.Len(resp.Msg.YearInReview.TopBreweries, 1)
+	suite.Len(resp.Msg.YearInReview.ByMonth, 2)
+}
+
+func (suite *ActivityTestSuite) TestGetYearInReview_DefaultsToCurrentYear() {
+	ctx := context.Background()
+	currentYear := time.Now().UTC().Year()
+
+	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), currentYear).
+		Return(&model.YearInReview{Year: currentYear, CellarID: 1}, nil)
+
+	resp, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
+		CellarId: 1,
+	}))
+
+	suite.Require().NoError(err)
+	suite.Greater(resp.Msg.YearInReview.Year, int32(2000))
+}

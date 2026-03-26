@@ -521,3 +521,43 @@ func ActivityEventFromModel(activity *model.Activity, entry *model.CellarEntry) 
 		Rating:     activity.Rating,
 	}
 }
+
+func YearInReviewFromModel(yir *model.YearInReview) *api.YearInReview {
+	topStyles := make([]*api.NameCount, 0, len(yir.TopStyles))
+
+	for _, styleCount := range yir.TopStyles {
+		topStyles = append(topStyles, &api.NameCount{Name: styleCount.Name, Count: styleCount.Count})
+	}
+
+	topCategories := make([]*api.NameCount, 0, len(yir.TopCategories))
+
+	for _, categoryCount := range yir.TopCategories {
+		topCategories = append(topCategories, &api.NameCount{Name: categoryCount.Name, Count: categoryCount.Count})
+	}
+
+	topBreweries := make([]*api.NameCount, 0, len(yir.TopBreweries))
+
+	for _, breweryCount := range yir.TopBreweries {
+		topBreweries = append(topBreweries, &api.NameCount{Name: breweryCount.Name, Count: breweryCount.Count})
+	}
+
+	byMonth := make([]*api.MonthlyCount, 0, len(yir.ByMonth))
+
+	for _, monthCount := range yir.ByMonth {
+		byMonth = append(byMonth, &api.MonthlyCount{Month: monthCount.Month, Count: monthCount.Count})
+	}
+
+	return &api.YearInReview{
+		Year:          int32(yir.Year), //nolint:gosec // year is a calendar year, well within int32 range
+		CellarId:      uint64(yir.CellarID),
+		BeersConsumed: yir.BeersConsumed,
+		UniqueBeers:   yir.UniqueBeers,
+		TotalVolumeMl: yir.TotalVolumeMl,
+		AverageRating: yir.AverageRating,
+		BeersAdded:    yir.BeersAdded,
+		TopStyles:     topStyles,
+		TopCategories: topCategories,
+		TopBreweries:  topBreweries,
+		ByMonth:       byMonth,
+	}
+}
