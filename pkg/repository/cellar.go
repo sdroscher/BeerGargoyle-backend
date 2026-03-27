@@ -39,6 +39,10 @@ type CellarRepository interface { //nolint:interfacebloat // this is an acceptab
 	UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error
 	UpdateAdventCalendarEntry(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time, cellarEntryID uint64) error
 	UpdateCellarEntry(ctx context.Context, entry *model.CellarEntry) (*model.CellarEntry, error)
+
+	// GetAllEntriesForCellar returns all cellar entries including soft-deleted ones, with Beer and
+	// Brewery loaded. Active entries are returned first so callers can prefer them when building maps.
+	GetAllEntriesForCellar(ctx context.Context, cellarID uint) ([]*model.CellarEntry, error)
 }
 
 func (r *Repository) AddCellar(ctx context.Context, name string, description string, locations []string, owner model.User) (*model.Cellar, error) {
@@ -506,6 +510,24 @@ func (r *Repository) UpdateAdventCalendarEntry(ctx context.Context, cellarID uin
 			" AND day = ?", cellarEntryID, calendarID, cellarID, day)
 
 	return result.Error
+}
+
+func (r *Repository) GetAllEntriesForCellar(ctx context.Context, cellarID uint) ([]*model.CellarEntry, error) {
+	var entries []*model.CellarEntry
+
+	result := r.DB.WithContext(ctx).
+		Unscoped().
+		Joins("Beer").
+		Preload("Beer.Brewery").
+		Where("cellar_entries.cellar_id = ?", cellarID).
+		// Active entries first (deleted_at IS NULL), then deleted; newest first within each group.
+		Order("cellar_entries.deleted_at NULLS FIRST, cellar_entries.created_at DESC").
+		Find(&entries)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return entries, nil
 }
 
 func (r *Repository) DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error {

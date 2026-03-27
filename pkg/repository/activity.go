@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"droscher.com/BeerGargoyle/pkg/model"
 )
 
 type ActivityRepository interface {
 	CreateActivity(ctx context.Context, activity *model.Activity) (*model.Activity, error)
-	FindByUntappdCheckinID(ctx context.Context, checkinID uint64) (*model.Activity, error)
 
 	// GetFeed returns activities for a cellar sorted by occurred_at DESC.
 	// Returns the page of activities and the total count (before pagination).
@@ -20,6 +20,22 @@ type ActivityRepository interface {
 
 	// GetYearInReview returns aggregate stats for a cellar for a given calendar year.
 	GetYearInReview(ctx context.Context, cellarID uint, year int) (*model.YearInReview, error)
+
+	// GetUntappdCheckinIDsForCellar returns the set of Untappd checkin IDs already stored for a cellar.
+	GetUntappdCheckinIDsForCellar(ctx context.Context, cellarID uint) (map[uint64]struct{}, error)
+
+	// GetOrInitImportState returns the import watermark for a cellar, creating it (seeded from the
+	// oldest cellar entry) if it does not exist yet.
+	GetOrInitImportState(ctx context.Context, cellarID uint) (*model.UntappdImportState, error)
+
+	// GetConsumedActivitiesForCellar returns beer_consumed activities that have no Untappd checkin
+	// linked yet, indexed by cellar_entry_id. Used to correlate CSV rows with backfill records.
+	GetConsumedActivitiesForCellar(ctx context.Context, cellarID uint) (map[uint][]model.ConsumedActivitySummary, error)
+
+	// ImportActivitiesWithState bulk-inserts new activities, applies Untappd metadata updates,
+	// and advances the watermark atomically.
+	// Returns the number of rows inserted and the number of rows updated.
+	ImportActivitiesWithState(ctx context.Context, activities []*model.Activity, updates []model.ActivityUntappdUpdate, state *model.UntappdImportState, newWatermark time.Time) (int64, int64, error)
 }
 
 func (r *Repository) CreateActivity(ctx context.Context, activity *model.Activity) (*model.Activity, error) {
@@ -258,17 +274,158 @@ func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview
 	return err
 }
 
-func (r *Repository) FindByUntappdCheckinID(ctx context.Context, checkinID uint64) (*model.Activity, error) {
-	var activity model.Activity
+func (r *Repository) GetUntappdCheckinIDsForCellar(ctx context.Context, cellarID uint) (map[uint64]struct{}, error) {
+	var ids []uint64
 
-	result := r.DB.WithContext(ctx).Where("untappd_checkin_id = ?", checkinID).First(&activity)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, nil //nolint:nilnil // nil means "not found", not an error
-		}
+	err := r.DB.WithContext(ctx).
+		Model(&model.Activity{}).
+		Where("cellar_id = ? AND untappd_checkin_id IS NOT NULL", cellarID).
+		Pluck("untappd_checkin_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
 
+	result := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		result[id] = struct{}{}
+	}
+
+	return result, nil
+}
+
+func (r *Repository) GetOrInitImportState(ctx context.Context, cellarID uint) (*model.UntappdImportState, error) {
+	var state model.UntappdImportState
+
+	result := r.DB.WithContext(ctx).Where("cellar_id = ?", cellarID).First(&state)
+	if result.Error == nil {
+		return &state, nil
+	}
+
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return nil, result.Error
 	}
 
-	return &activity, nil
+	// Seed watermark from the oldest cellar entry so we skip pre-app history.
+	var minCreatedAt time.Time
+
+	err := r.DB.WithContext(ctx).Raw(
+		`SELECT COALESCE(MIN(created_at), '1970-01-01 00:00:00') FROM cellar_entries WHERE cellar_id = ?`,
+		cellarID,
+	).Scan(&minCreatedAt).Error
+	if err != nil {
+		return nil, err
+	}
+
+	state = model.UntappdImportState{CellarID: cellarID, LastImportAt: minCreatedAt}
+
+	// Use FirstOrCreate to handle the unlikely concurrent-insert race on the unique index.
+	err = r.DB.WithContext(ctx).Where("cellar_id = ?", cellarID).FirstOrCreate(&state).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &state, nil
+}
+
+func (r *Repository) GetConsumedActivitiesForCellar(ctx context.Context, cellarID uint) (map[uint][]model.ConsumedActivitySummary, error) {
+	var summaries []model.ConsumedActivitySummary
+
+	err := r.DB.WithContext(ctx).Raw(`
+		SELECT id, cellar_entry_id AS entry_id, occurred_at
+		FROM activities
+		WHERE cellar_id = ?
+		  AND activity_type = ?
+		  AND untappd_checkin_id IS NULL
+		  AND cellar_entry_id IS NOT NULL
+		  AND deleted_at IS NULL
+	`, cellarID, model.ActivityTypeBeerConsumed).Scan(&summaries).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uint][]model.ConsumedActivitySummary, len(summaries))
+	for _, s := range summaries {
+		result[s.EntryID] = append(result[s.EntryID], s)
+	}
+
+	return result, nil
+}
+
+func (r *Repository) ImportActivitiesWithState(
+	ctx context.Context,
+	activities []*model.Activity,
+	updates []model.ActivityUntappdUpdate,
+	state *model.UntappdImportState,
+	newWatermark time.Time,
+) (int64, int64, error) {
+	var imported, updated int64
+
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if len(activities) > 0 {
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "untappd_checkin_id"}},
+				DoNothing: true,
+			}).Create(&activities)
+			if result.Error != nil {
+				return result.Error
+			}
+
+			imported = result.RowsAffected
+		}
+
+		for _, upd := range updates {
+			cols := map[string]any{"untappd_checkin_id": upd.CheckinID}
+			if upd.Rating != nil {
+				cols["rating"] = upd.Rating
+			}
+
+			if upd.Note != nil {
+				cols["note"] = upd.Note
+			}
+
+			result := tx.Model(&model.Activity{}).Where("id = ?", upd.ActivityID).Updates(cols)
+			if result.Error != nil {
+				return result.Error
+			}
+
+			updated += result.RowsAffected
+		}
+
+		hadBeforeErr := markEntriesHadBefore(tx, activities, updates)
+		if hadBeforeErr != nil {
+			return hadBeforeErr
+		}
+
+		return tx.Model(state).Update("last_import_at", newWatermark).Error
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return imported, updated, nil
+}
+
+// markEntriesHadBefore sets had_before = TRUE on cellar entries touched by the import.
+func markEntriesHadBefore(tx *gorm.DB, activities []*model.Activity, updates []model.ActivityUntappdUpdate) error {
+	entryIDs := make([]uint, 0, len(activities)+len(updates))
+
+	for _, act := range activities {
+		if act.CellarEntryID != nil {
+			entryIDs = append(entryIDs, *act.CellarEntryID)
+		}
+	}
+
+	for _, upd := range updates {
+		entryIDs = append(entryIDs, upd.EntryID)
+	}
+
+	if len(entryIDs) == 0 {
+		return nil
+	}
+
+	err := tx.Unscoped().Model(&model.CellarEntry{}).
+		Where("id IN ?", entryIDs).
+		Update("had_before", true).Error
+
+	return err
 }

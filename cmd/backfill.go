@@ -154,10 +154,45 @@ func insertNewActivities(db *gorm.DB, entries []model.CellarEntry, candidates []
 		return 0, skipped, nil
 	}
 
-	result := db.CreateInBatches(toInsert, backfillBatchSize)
-	if result.Error != nil {
-		return 0, 0, fmt.Errorf("inserting activities: %w", result.Error)
+	var inserted int64
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		result := tx.CreateInBatches(toInsert, backfillBatchSize)
+		if result.Error != nil {
+			return fmt.Errorf("inserting activities: %w", result.Error)
+		}
+
+		inserted = result.RowsAffected
+
+		return markHadBefore(tx, toInsert)
+	})
+	if err != nil {
+		return 0, 0, err
 	}
 
-	return result.RowsAffected, skipped, nil
+	return inserted, skipped, nil
+}
+
+// markHadBefore sets had_before = TRUE on cellar entries for any beer_consumed activities in the list.
+func markHadBefore(db *gorm.DB, activities []model.Activity) error {
+	entryIDs := make([]uint, 0, len(activities))
+
+	for _, act := range activities {
+		if act.ActivityType == model.ActivityTypeBeerConsumed && act.CellarEntryID != nil {
+			entryIDs = append(entryIDs, *act.CellarEntryID)
+		}
+	}
+
+	if len(entryIDs) == 0 {
+		return nil
+	}
+
+	err := db.Unscoped().Model(&model.CellarEntry{}).
+		Where("id IN ?", entryIDs).
+		Update("had_before", true).Error
+	if err != nil {
+		return fmt.Errorf("updating had_before: %w", err)
+	}
+
+	return nil
 }

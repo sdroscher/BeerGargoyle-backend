@@ -37,6 +37,23 @@ type YearInReview struct {
 	ByMonth       []MonthlyCount
 }
 
+// ConsumedActivitySummary is a lightweight projection of Activity used during Untappd CSV import
+// to find existing beer_consumed records that can be enriched with Untappd metadata.
+type ConsumedActivitySummary struct {
+	ID         uint
+	EntryID    uint
+	OccurredAt time.Time
+}
+
+// ActivityUntappdUpdate carries Untappd metadata to merge into an existing activity record.
+type ActivityUntappdUpdate struct {
+	ActivityID uint
+	EntryID    uint // CellarEntry to mark as had_before
+	CheckinID  uint64
+	Rating     *float64
+	Note       *string
+}
+
 type Activity struct {
 	gorm.Model
 	CellarID         uint         `gorm:"index"`

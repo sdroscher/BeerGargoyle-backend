@@ -33,6 +33,7 @@ service CellarService {
   rpc RecordConsumption(RecordConsumptionRequest) returns (RecordConsumptionResponse) {}
   rpc GetActivityFeed(GetActivityFeedRequest) returns (GetActivityFeedResponse) {}
   rpc GetYearInReview(GetYearInReviewRequest) returns (GetYearInReviewResponse) {}
+  rpc ImportUntappdCheckins(ImportUntappdCheckinsRequest) returns (ImportUntappdCheckinsResponse) {}
 }
 
 message AddCellarRequest {
@@ -378,4 +379,17 @@ message GetYearInReviewRequest {
 
 message GetYearInReviewResponse {
   YearInReview year_in_review = 1;
+}
+
+// ── Untappd CSV Import ────────────────────────────────────────────────────────
+
+message ImportUntappdCheckinsRequest {
+  uint64 cellar_id = 1;
+  bytes csv_data = 2;
+}
+
+message ImportUntappdCheckinsResponse {
+  int32 imported = 1; // new activity records written
+  int32 skipped = 2; // rows skipped (before watermark, wrong serving type, already imported)
+  int32 updated = 3; // existing activity records enriched with Untappd metadata
 }
