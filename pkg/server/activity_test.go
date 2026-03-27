@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -32,11 +31,11 @@ func TestActivityTestSuite(t *testing.T) {
 func (suite *ActivityTestSuite) SetupTest() {
 	suite.activityRepo = mocks.NewActivityRepository(suite.T())
 	suite.cellarRepo = mocks.NewCellarRepository(suite.T())
-	suite.service = server.NewCellarServer(suite.cellarRepo, nil, nil, suite.activityRepo, zap.NewNop())
+	suite.service = server.NewCellarServer(suite.cellarRepo, nil, suite.activityRepo, zap.NewNop())
 }
 
 func (suite *ActivityTestSuite) TestRecordConsumption_Success() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	format := &model.BeerFormat{Package: "Can", SizeMetric: 473}
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
@@ -68,6 +67,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_Success() {
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(entry, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.cellarRepo.EXPECT().ConsumeEntry(ctx, entryAfterDecrement, activityMatcher).Return(activity, nil)
 
 	resp, err := suite.service.RecordConsumption(ctx, connect.NewRequest(&apiv1.RecordConsumptionRequest{
@@ -83,7 +83,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_Success() {
 }
 
 func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
@@ -113,6 +113,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(entry, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.cellarRepo.EXPECT().ConsumeEntry(ctx, entryAfterDecrement, activityMatcher).Return(activity, nil)
 
 	resp, err := suite.service.RecordConsumption(ctx, connect.NewRequest(&apiv1.RecordConsumptionRequest{
@@ -126,7 +127,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
 }
 
 func (suite *ActivityTestSuite) TestGetActivityFeed_Basic() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	entryID := uint(10)
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
@@ -145,6 +146,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Basic() {
 		},
 	}
 
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.activityRepo.EXPECT().GetFeed(ctx, uint(1), (*time.Time)(nil), (*time.Time)(nil), 25, 0).
 		Return(activities, int64(1), nil)
 
@@ -160,7 +162,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Basic() {
 }
 
 func (suite *ActivityTestSuite) TestGetActivityFeed_Pagination() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	entryID := uint(10)
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
@@ -180,6 +182,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Pagination() {
 		})
 	}
 
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.activityRepo.EXPECT().GetFeed(ctx, uint(1), (*time.Time)(nil), (*time.Time)(nil), 5, 5).
 		Return(activities, int64(15), nil)
 
@@ -196,7 +199,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Pagination() {
 }
 
 func (suite *ActivityTestSuite) TestRecordConsumption_ConsumeEntryFails() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
@@ -206,6 +209,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_ConsumeEntryFails() {
 	dbErr := errors.New("db error")
 
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(entry, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.cellarRepo.EXPECT().ConsumeEntry(ctx, mock.Anything, mock.Anything).Return(nil, dbErr)
 
 	resp, err := suite.service.RecordConsumption(ctx, connect.NewRequest(&apiv1.RecordConsumptionRequest{
@@ -218,7 +222,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_ConsumeEntryFails() {
 }
 
 func (suite *ActivityTestSuite) TestRecordConsumption_ExceedsQuantity() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
@@ -227,6 +231,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_ExceedsQuantity() {
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(entry, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 
 	resp, err := suite.service.RecordConsumption(ctx, connect.NewRequest(&apiv1.RecordConsumptionRequest{
 		CellarEntryId: 10,
@@ -239,7 +244,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_ExceedsQuantity() {
 }
 
 func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	yir := &model.YearInReview{
 		Year:          2024,
 		CellarID:      1,
@@ -265,6 +270,7 @@ func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
 		},
 	}
 
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), 2024).Return(yir, nil)
 
 	resp, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
@@ -287,9 +293,10 @@ func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
 }
 
 func (suite *ActivityTestSuite) TestGetYearInReview_DefaultsToCurrentYear() {
-	ctx := context.Background()
+	ctx := ctxWithUser(1)
 	currentYear := time.Now().UTC().Year()
 
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), currentYear).
 		Return(&model.YearInReview{Year: currentYear, CellarID: 1}, nil)
 

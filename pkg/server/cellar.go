@@ -13,6 +13,7 @@ import (
 	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gorm.io/gorm"
 
 	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
 	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
@@ -27,7 +28,6 @@ type CellarServer struct {
 	logger             *zap.Logger
 	cellarRepository   repository.CellarRepository
 	beerRepository     beerRepository
-	userRepository     userRepository
 	activityRepository repository.ActivityRepository
 }
 
@@ -39,24 +39,54 @@ var (
 	ErrCellarNotFound = errors.New("cellar not found")
 	ErrInvalidInput   = errors.New("bad request")
 	ErrCannotCreate   = errors.New("cannot create advent calendar")
+	ErrNotAuthorized  = errors.New("not authorized")
 )
-
-type userRepository interface {
-	GetUserByUUID(ctx context.Context, uuid uuid.UUID) (*model.User, error)
-}
 
 type beerRepository interface {
 	GetTagsByNames(ctx context.Context, names []string) (map[string]model.Tag, error)
 }
 
-func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, userRepo userRepository, activityRepo repository.ActivityRepository, logger *zap.Logger) *CellarServer {
-	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, userRepository: userRepo, activityRepository: activityRepo, logger: logger}
+func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, activityRepo repository.ActivityRepository, logger *zap.Logger) *CellarServer {
+	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, activityRepository: activityRepo, logger: logger}
+}
+
+// requireCellarOwner fetches the cellar and returns CodePermissionDenied if the
+// authenticated user does not own it, or CodeNotFound if the cellar does not exist.
+func (c *CellarServer) requireCellarOwner(ctx context.Context, cellarID uint) (*model.Cellar, error) {
+	user, ok := ctx.Value(auth.UserKey{}).(*model.User)
+	if !ok || user == nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, ErrNotAuthorized)
+	}
+
+	cellar, err := c.cellarRepository.GetCellarByID(ctx, cellarID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: id %d", ErrCellarNotFound, cellarID))
+		}
+
+		return nil, err
+	}
+
+	if cellar.OwnerID != user.ID {
+		return nil, connect.NewError(connect.CodePermissionDenied, ErrNotAuthorized)
+	}
+
+	return cellar, nil
 }
 
 func (c *CellarServer) AddCellar(ctx context.Context, request *connect.Request[api.AddCellarRequest]) (*connect.Response[api.AddCellarResponse], error) {
-	user, err := c.userRepository.GetUserByUUID(ctx, uuid.MustParse(request.Msg.GetOwnerUuid()))
+	user, ok := ctx.Value(auth.UserKey{}).(*model.User)
+	if !ok || user == nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, ErrNotAuthorized)
+	}
+
+	requestedUUID, err := uuid.Parse(request.Msg.GetOwnerUuid())
 	if err != nil {
-		return nil, err
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid owner_uuid: %w", err))
+	}
+
+	if user.UUID != requestedUUID {
+		return nil, connect.NewError(connect.CodePermissionDenied, ErrNotAuthorized)
 	}
 
 	owner := api.User{
@@ -110,26 +140,20 @@ func (c *CellarServer) GetCellarList(ctx context.Context, _ *connect.Request[api
 }
 
 func (c *CellarServer) GetCellar(ctx context.Context, request *connect.Request[api.GetCellarRequest]) (*connect.Response[api.GetCellarResponse], error) {
-	cellar, err := c.cellarRepository.GetCellarByID(ctx, uint(request.Msg.GetCellarId()))
+	cellar, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
 	if err != nil {
 		return nil, err
 	}
 
-	pbCellar := grpc.CellarFromModel(cellar)
-
-	response := api.GetCellarResponse{Cellar: pbCellar}
+	response := api.GetCellarResponse{Cellar: grpc.CellarFromModel(cellar)}
 
 	return connect.NewResponse(&response), nil
 }
 
 func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Request[api.AddCellarBeerRequest]) (*connect.Response[api.AddCellarBeerResponse], error) {
-	cellar, err := c.cellarRepository.GetCellarByID(ctx, uint(request.Msg.GetCellarId()))
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
 	if err != nil {
 		return nil, err
-	}
-
-	if cellar == nil {
-		return nil, fmt.Errorf("%w: id %d", ErrCellarNotFound, request.Msg.GetCellarId())
 	}
 
 	beer := model.CellarEntry{
@@ -217,12 +241,22 @@ func (c *CellarServer) GetCellarEntry(ctx context.Context, request *connect.Requ
 		return nil, err
 	}
 
+	_, err = c.requireCellarOwner(ctx, cellarEntry.CellarID)
+	if err != nil {
+		return nil, err
+	}
+
 	response := api.GetCellarEntryResponse{Entry: grpc.CellarBeerFromModel(cellarEntry)}
 
 	return connect.NewResponse(&response), nil
 }
 
 func (c *CellarServer) GetCellarStats(ctx context.Context, request *connect.Request[api.GetCellarStatsRequest]) (*connect.Response[api.GetCellarStatsResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	stats, err := c.cellarRepository.GetCellarStats(ctx, uint(request.Msg.GetCellarId()))
 	if err != nil {
 		return nil, err
@@ -234,6 +268,11 @@ func (c *CellarServer) GetCellarStats(ctx context.Context, request *connect.Requ
 }
 
 func (c *CellarServer) ListCellarBeers(ctx context.Context, request *connect.Request[api.ListCellarBeersRequest]) (*connect.Response[api.ListCellarBeersResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	beers, err := c.cellarRepository.GetCellarBeers(ctx, uint(request.Msg.GetCellarId()))
 	if err != nil {
 		return nil, err
@@ -245,18 +284,23 @@ func (c *CellarServer) ListCellarBeers(ctx context.Context, request *connect.Req
 }
 
 func (c *CellarServer) UpdateBeer(ctx context.Context, request *connect.Request[api.UpdateBeerRequest]) (*connect.Response[api.UpdateBeerResponse], error) {
+	cellarEntry, err := c.cellarRepository.GetCellarEntryByID(ctx, uint(request.Msg.GetCellarEntryId()))
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = c.requireCellarOwner(ctx, cellarEntry.CellarID)
+	if err != nil {
+		return nil, err
+	}
+
 	if request.Msg.Quantity != nil && request.Msg.GetQuantity() == 0 {
-		err := c.cellarRepository.DeleteCellarEntry(ctx, uint(request.Msg.GetCellarEntryId()))
+		err = c.cellarRepository.DeleteCellarEntry(ctx, uint(request.Msg.GetCellarEntryId()))
 		if err != nil {
 			return nil, err
 		}
 
 		return connect.NewResponse(&api.UpdateBeerResponse{Beer: nil}), nil
-	}
-
-	cellarEntry, err := c.cellarRepository.GetCellarEntryByID(ctx, uint(request.Msg.GetCellarEntryId()))
-	if err != nil {
-		return nil, err
 	}
 
 	c.updateCellarEntry(ctx, request, cellarEntry)
@@ -319,6 +363,11 @@ func (c *CellarServer) updateCellarEntry(ctx context.Context, request *connect.R
 }
 
 func (c *CellarServer) RecommendBeer(ctx context.Context, request *connect.Request[api.RecommendBeerRequest]) (*connect.Response[api.RecommendBeerResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	candidates, err := c.cellarRepository.FindBeerRecommendations(ctx, request.Msg.GetCellarId(), request.Msg.GetFilter())
 	if err != nil {
 		return nil, err
@@ -336,6 +385,11 @@ func (c *CellarServer) RecommendBeer(ctx context.Context, request *connect.Reque
 }
 
 func (c *CellarServer) GetCellarRecommendationParams(ctx context.Context, request *connect.Request[api.GetCellarRecommendationParamsRequest]) (*connect.Response[api.GetCellarRecommendationParamsResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	breweries, err := c.cellarRepository.GetCellarBreweryNames(ctx, request.Msg.GetCellarId())
 	if err != nil {
 		return nil, err
@@ -369,6 +423,11 @@ func (c *CellarServer) GetCellarRecommendationParams(ctx context.Context, reques
 }
 
 func (c *CellarServer) CreateAdventCalendar(ctx context.Context, request *connect.Request[api.CreateAdventCalendarRequest]) (*connect.Response[api.CreateAdventCalendarResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	startDate := truncateToDay(request.Msg.GetStartDate().AsTime())
 	endDate := truncateToDay(request.Msg.GetEndDate().AsTime())
 
@@ -489,6 +548,11 @@ func (c *CellarServer) GetAdventCalendar(ctx context.Context, request *connect.R
 		err      error
 	)
 
+	_, err = c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	switch requestType := request.Msg.GetCriteria().(type) {
 	case *api.GetAdventCalendarRequest_Id:
 		calendar, err = c.cellarRepository.GetAdventCalendarByID(ctx, request.Msg.GetCellarId(), requestType.Id)
@@ -520,9 +584,14 @@ func (c *CellarServer) GetAdventCalendar(ctx context.Context, request *connect.R
 }
 
 func (c *CellarServer) UpdateAdventCalendar(ctx context.Context, request *connect.Request[api.UpdateAdventCalendarRequest]) (*connect.Response[api.UpdateAdventCalendarResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	day := truncateToDay(request.Msg.GetRevealDay().AsTime())
 
-	err := c.cellarRepository.UpdateAdventCalendar(ctx, request.Msg.GetCellarId(), request.Msg.GetId(), day)
+	err = c.cellarRepository.UpdateAdventCalendar(ctx, request.Msg.GetCellarId(), request.Msg.GetId(), day)
 	if err != nil {
 		return nil, err
 	}
@@ -531,7 +600,12 @@ func (c *CellarServer) UpdateAdventCalendar(ctx context.Context, request *connec
 }
 
 func (c *CellarServer) DeleteAdventCalendar(ctx context.Context, request *connect.Request[api.DeleteAdventCalendarRequest]) (*connect.Response[api.DeleteAdventCalendarResponse], error) {
-	err := c.cellarRepository.DeleteAdventCalendar(ctx, request.Msg.GetCellarId(), request.Msg.GetId())
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.cellarRepository.DeleteAdventCalendar(ctx, request.Msg.GetCellarId(), request.Msg.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -540,6 +614,11 @@ func (c *CellarServer) DeleteAdventCalendar(ctx context.Context, request *connec
 }
 
 func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request *connect.Request[api.RegenerateAdventCalendarDayRequest]) (*connect.Response[api.RegenerateAdventCalendarDayResponse], error) {
+	_, err := c.requireCellarOwner(ctx, uint(request.Msg.GetCellarId()))
+	if err != nil {
+		return nil, err
+	}
+
 	adventCalendar, err := c.cellarRepository.GetAdventCalendarByID(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId())
 	if err != nil {
 		return nil, err

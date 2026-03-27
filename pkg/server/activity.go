@@ -36,6 +36,11 @@ func (c *CellarServer) RecordConsumption(ctx context.Context, request *connect.R
 		return nil, err
 	}
 
+	_, err = c.requireCellarOwner(ctx, entry.CellarID)
+	if err != nil {
+		return nil, err
+	}
+
 	qty := request.Msg.GetQuantity()
 	if qty <= 0 {
 		qty = 1
@@ -76,6 +81,11 @@ func (c *CellarServer) RecordConsumption(ctx context.Context, request *connect.R
 // GetActivityFeed returns a paginated list of activity events for a cellar.
 func (c *CellarServer) GetActivityFeed(ctx context.Context, request *connect.Request[api.GetActivityFeedRequest]) (*connect.Response[api.GetActivityFeedResponse], error) {
 	cellarID := uint(request.Msg.GetCellarId())
+
+	_, err := c.requireCellarOwner(ctx, cellarID)
+	if err != nil {
+		return nil, err
+	}
 
 	pageSize := int(request.Msg.GetPageSize())
 	if pageSize <= 0 {
@@ -123,12 +133,19 @@ func (c *CellarServer) GetActivityFeed(ctx context.Context, request *connect.Req
 
 // GetYearInReview returns aggregate consumption and acquisition stats for a cellar year.
 func (c *CellarServer) GetYearInReview(ctx context.Context, request *connect.Request[api.GetYearInReviewRequest]) (*connect.Response[api.GetYearInReviewResponse], error) {
+	cellarID := uint(request.Msg.GetCellarId())
+
+	_, err := c.requireCellarOwner(ctx, cellarID)
+	if err != nil {
+		return nil, err
+	}
+
 	year := int(request.Msg.GetYear())
 	if year == 0 {
 		year = time.Now().UTC().Year()
 	}
 
-	yir, err := c.activityRepository.GetYearInReview(ctx, uint(request.Msg.GetCellarId()), year)
+	yir, err := c.activityRepository.GetYearInReview(ctx, cellarID, year)
 	if err != nil {
 		return nil, err
 	}
