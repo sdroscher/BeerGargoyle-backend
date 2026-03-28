@@ -38,7 +38,9 @@ func (m *MigrateCmd) Run(_ *Context) error {
 		&model.BeerFormat{}, &model.Beer{},
 		&model.User{},
 		&model.Cellar{}, &model.LocationInCellar{}, &model.CellarEntry{},
-		&model.AdventCalendar{}, &model.AdventCalendarBeer{}, &model.AdventCalendarFilter{})
+		&model.AdventCalendar{}, &model.AdventCalendarBeer{}, &model.AdventCalendarFilter{},
+		&model.Activity{},
+		&model.UntappdImportState{})
 	if err != nil {
 		return err
 	}

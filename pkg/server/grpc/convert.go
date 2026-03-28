@@ -500,3 +500,69 @@ func CellarFilterFromModel(filter *model.AdventCalendarFilter) *api.CellarFilter
 
 	return &pbFilter
 }
+
+func ActivityEventFromModel(activity *model.Activity, entry *model.CellarEntry) *api.ActivityEvent {
+	eventType := api.ActivityEventType_ACTIVITY_EVENT_TYPE_UNSPECIFIED
+
+	switch activity.ActivityType {
+	case model.ActivityTypeBeerAdded:
+		eventType = api.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_ADDED
+	case model.ActivityTypeBeerConsumed:
+		eventType = api.ActivityEventType_ACTIVITY_EVENT_TYPE_BEER_CONSUMED
+	}
+
+	var cellarBeer *api.CellarBeer
+	if entry != nil {
+		cellarBeer = CellarBeerFromModel(entry)
+	}
+
+	return &api.ActivityEvent{
+		Id:         uint64(activity.ID),
+		Type:       eventType,
+		OccurredAt: timestamppb.New(activity.OccurredAt),
+		CellarBeer: cellarBeer,
+		Quantity:   activity.Quantity,
+		Note:       activity.Note,
+		Rating:     activity.Rating,
+	}
+}
+
+func YearInReviewFromModel(yir *model.YearInReview) *api.YearInReview {
+	topStyles := make([]*api.NameCount, 0, len(yir.TopStyles))
+
+	for _, styleCount := range yir.TopStyles {
+		topStyles = append(topStyles, &api.NameCount{Name: styleCount.Name, Count: styleCount.Count})
+	}
+
+	topCategories := make([]*api.NameCount, 0, len(yir.TopCategories))
+
+	for _, categoryCount := range yir.TopCategories {
+		topCategories = append(topCategories, &api.NameCount{Name: categoryCount.Name, Count: categoryCount.Count})
+	}
+
+	topBreweries := make([]*api.NameCount, 0, len(yir.TopBreweries))
+
+	for _, breweryCount := range yir.TopBreweries {
+		topBreweries = append(topBreweries, &api.NameCount{Name: breweryCount.Name, Count: breweryCount.Count})
+	}
+
+	byMonth := make([]*api.MonthlyCount, 0, len(yir.ByMonth))
+
+	for _, monthCount := range yir.ByMonth {
+		byMonth = append(byMonth, &api.MonthlyCount{Month: monthCount.Month, Count: monthCount.Count})
+	}
+
+	return &api.YearInReview{
+		Year:          int32(yir.Year), //nolint:gosec // year is a calendar year, well within int32 range
+		CellarId:      uint64(yir.CellarID),
+		BeersConsumed: yir.BeersConsumed,
+		UniqueBeers:   yir.UniqueBeers,
+		TotalVolumeMl: yir.TotalVolumeMl,
+		AverageRating: yir.AverageRating,
+		BeersAdded:    yir.BeersAdded,
+		TopStyles:     topStyles,
+		TopCategories: topCategories,
+		TopBreweries:  topBreweries,
+		ByMonth:       byMonth,
+	}
+}

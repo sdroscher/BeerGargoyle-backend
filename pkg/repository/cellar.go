@@ -15,7 +15,11 @@ import (
 
 type CellarRepository interface { //nolint:interfacebloat // this is an acceptable interface
 	AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error)
+	// AddBeerToCellarWithActivity atomically creates the cellar entry and a BEER_ADDED activity.
+	AddBeerToCellarWithActivity(ctx context.Context, beer model.CellarEntry, occurredAt time.Time) (*model.CellarEntry, error)
 	AddCellar(ctx context.Context, name string, description string, locations []string, owner model.User) (*model.Cellar, error)
+	// ConsumeEntry atomically creates the activity record and decrements/soft-deletes the entry.
+	ConsumeEntry(ctx context.Context, entry *model.CellarEntry, activity *model.Activity) (*model.Activity, error)
 	DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error
 	DeleteCellarEntry(ctx context.Context, cellarEntryID uint) error
 	FindBeerRecommendations(ctx context.Context, cellarID uint64, filter *api.CellarFilter) ([]*model.CellarEntry, error)
@@ -35,6 +39,10 @@ type CellarRepository interface { //nolint:interfacebloat // this is an acceptab
 	UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error
 	UpdateAdventCalendarEntry(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time, cellarEntryID uint64) error
 	UpdateCellarEntry(ctx context.Context, entry *model.CellarEntry) (*model.CellarEntry, error)
+
+	// GetAllEntriesForCellar returns all cellar entries including soft-deleted ones, with Beer and
+	// Brewery loaded. Active entries are returned first so callers can prefer them when building maps.
+	GetAllEntriesForCellar(ctx context.Context, cellarID uint) ([]*model.CellarEntry, error)
 }
 
 func (r *Repository) AddCellar(ctx context.Context, name string, description string, locations []string, owner model.User) (*model.Cellar, error) {
@@ -89,6 +97,30 @@ func (r *Repository) GetCellarByID(ctx context.Context, cellarID uint) (*model.C
 func (r *Repository) AddBeerToCellar(ctx context.Context, beer model.CellarEntry) (*model.CellarEntry, error) {
 	if result := r.DB.WithContext(ctx).Create(&beer); result.Error != nil {
 		return nil, result.Error
+	}
+
+	return &beer, nil
+}
+
+func (r *Repository) AddBeerToCellarWithActivity(ctx context.Context, beer model.CellarEntry, occurredAt time.Time) (*model.CellarEntry, error) {
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Create(&beer); result.Error != nil {
+			return result.Error
+		}
+
+		entryID := beer.ID
+		activity := model.Activity{
+			CellarID:      beer.CellarID,
+			CellarEntryID: &entryID,
+			ActivityType:  model.ActivityTypeBeerAdded,
+			Quantity:      beer.Quantity,
+			OccurredAt:    occurredAt,
+		}
+
+		return tx.Create(&activity).Error
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &beer, nil
@@ -179,6 +211,26 @@ func (r *Repository) UpdateCellarEntry(ctx context.Context, entry *model.CellarE
 	}
 
 	return entry, nil
+}
+
+// ConsumeEntry atomically creates an activity record and decrements or soft-deletes the cellar entry.
+func (r *Repository) ConsumeEntry(ctx context.Context, entry *model.CellarEntry, activity *model.Activity) (*model.Activity, error) {
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if result := tx.Create(activity); result.Error != nil {
+			return result.Error
+		}
+
+		if entry.Quantity == 0 {
+			return tx.Delete(&model.CellarEntry{}, entry.ID).Error
+		}
+
+		return tx.Save(entry).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return activity, nil
 }
 
 func (r *Repository) FindBeerRecommendations(ctx context.Context, cellarID uint64, filter *api.CellarFilter) ([]*model.CellarEntry, error) {
@@ -458,6 +510,24 @@ func (r *Repository) UpdateAdventCalendarEntry(ctx context.Context, cellarID uin
 			" AND day = ?", cellarEntryID, calendarID, cellarID, day)
 
 	return result.Error
+}
+
+func (r *Repository) GetAllEntriesForCellar(ctx context.Context, cellarID uint) ([]*model.CellarEntry, error) {
+	var entries []*model.CellarEntry
+
+	result := r.DB.WithContext(ctx).
+		Unscoped().
+		Joins("Beer").
+		Preload("Beer.Brewery").
+		Where("cellar_entries.cellar_id = ?", cellarID).
+		// Active entries first (deleted_at IS NULL), then deleted; newest first within each group.
+		Order("cellar_entries.deleted_at NULLS FIRST, cellar_entries.created_at DESC").
+		Find(&entries)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return entries, nil
 }
 
 func (r *Repository) DeleteAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64) error {

@@ -7,6 +7,7 @@ type Context struct {
 var CLI struct {
 	Debug bool `help:"Enable debug mode"`
 
-	Serve   ServeCmd   `cmd:"" default:"1"                    help:"Run the server"`
-	Migrate MigrateCmd `cmd:"" help:"Run database migrations"`
+	Serve    ServeCmd    `cmd:"" default:"1"                                                            help:"Run the server"`
+	Migrate  MigrateCmd  `cmd:"" help:"Run database migrations"`
+	Backfill BackfillCmd `cmd:"" help:"Bootstrap Activity records from existing CellarEntry timestamps"`
 }
