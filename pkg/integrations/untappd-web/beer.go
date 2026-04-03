@@ -137,7 +137,9 @@ func (u *UntappedWebIntegration) getBeerData(detailCollector *colly.Collector, s
 		u.logger.Info("successfully scraped beer from JSON data", zap.Uint64("id", beerJSON.Sku), zap.String("description", beerJSON.Description))
 
 		beer.Description = beerJSON.Description
-		beer.ImageURL = beerJSON.Image.ContentURL
+		if !strings.HasPrefix(beerJSON.Image.ContentURL, "https://next.untappd.com/og/") {
+			beer.ImageURL = beerJSON.Image.ContentURL
+		}
 		beer.ExternalID = pointy.Uint64(beerJSON.Sku)
 		beer.ExternalRating = pointy.Float64(beerJSON.AggregateRating.RatingValue)
 	})
