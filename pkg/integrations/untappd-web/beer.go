@@ -101,25 +101,28 @@ func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
 	u.logger.Info("scraping query results", zap.String("query", name))
 	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/search?q=/"+name))
 
+	results = make([]model.Beer, 0, len(scrapedPages))
+
 	var beerWG sync.WaitGroup
 
 	beerChan := make(chan scrapeResults, len(scrapedPages))
 
-	appendResult := func() {
-		scraped := <-beerChan
-		results = append(results, scraped.beers...)
-		multierr.AppendInto(&errs, scraped.err)
-		beerWG.Done()
-	}
-
 	for _, scraped := range scrapedPages {
 		beerWG.Add(1)
 
-		go u.getBeerData(collector.Clone(), scraped, breweries, beerChan)
-		go appendResult()
+		go func() {
+			defer beerWG.Done()
+			u.getBeerData(collector.Clone(), scraped, breweries, beerChan)
+		}()
 	}
 
 	beerWG.Wait()
+
+	for range scrapedPages {
+		result := <-beerChan
+		results = append(results, result.beers...)
+		multierr.AppendInto(&errs, result.err)
+	}
 
 	u.logger.Info("finished scraping query results", zap.Any("results", results), zap.Error(errs))
 
@@ -128,6 +131,7 @@ func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
 
 func (u *UntappedWebIntegration) getBeerData(detailCollector *colly.Collector, scraped BeerScraped, breweries map[string]model.Brewery, beerChan chan scrapeResults) {
 	setBrowserHeaders(detailCollector)
+	u.registerDebugHandlers(detailCollector)
 
 	beer := model.Beer{
 		Name:           scraped.Name,
@@ -191,7 +195,11 @@ func (u *UntappedWebIntegration) getBeerData(detailCollector *colly.Collector, s
 }
 
 func (u *UntappedWebIntegration) cacheBreweryDetails(breweryURI string, collector *colly.Collector, breweries map[string]model.Brewery) error {
-	brewery, err := u.getBreweryFromURI(breweryURI, collector)
+	clone := collector.Clone()
+	setBrowserHeaders(clone)
+	u.registerDebugHandlers(clone)
+
+	brewery, err := u.getBreweryFromURI(breweryURI, clone)
 	if err != nil {
 		return err
 	}
@@ -213,27 +221,37 @@ func extractABV(details BeerScraped) *float64 {
 
 func (u *UntappedWebIntegration) registerDebugHandlers(collector *colly.Collector) {
 	collector.OnResponse(func(response *colly.Response) {
-		u.logger.Info("scrape response", zap.String("url", response.Request.URL.String()), zap.Int("status_code", response.StatusCode))
+		u.logger.Info("scrape response", zap.String("url", responseURL(response)), zap.Int("status_code", response.StatusCode))
 	})
 
 	collector.OnError(func(response *colly.Response, err error) {
 		fields := []zap.Field{
-			zap.String("url", response.Request.URL.String()),
+			zap.String("url", responseURL(response)),
 			zap.Error(err),
 			zap.Int("status_code", response.StatusCode),
 		}
-		for key, vals := range *response.Headers {
-			fields = append(fields, zap.String("resp_header_"+key, strings.Join(vals, ", ")))
+		if response.Headers != nil {
+			for key, vals := range *response.Headers {
+				fields = append(fields, zap.String("resp_header_"+key, strings.Join(vals, ", ")))
+			}
 		}
 		if len(response.Body) > 0 {
-			snip := string(response.Body)
-			if len(snip) > 500 {
-				snip = snip[:500]
+			runes := []rune(string(response.Body))
+			if len(runes) > 500 {
+				runes = runes[:500]
 			}
-			fields = append(fields, zap.String("resp_body_snippet", snip))
+			fields = append(fields, zap.String("resp_body_snippet", string(runes)))
 		}
 		u.logger.Error("error while scraping beer search results", fields...)
 	})
+}
+
+func responseURL(response *colly.Response) string {
+	if response.Request == nil || response.Request.URL == nil {
+		return ""
+	}
+
+	return response.Request.URL.String()
 }
 
 func setBrowserHeaders(collector *colly.Collector) {
