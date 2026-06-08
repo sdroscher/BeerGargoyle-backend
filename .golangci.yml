@@ -51,6 +51,7 @@ linters:
         path: integrations/
       - linters:
           - err113
+          - unqueryvet
         path: (.+)_test.go
     paths:
       - third_party$

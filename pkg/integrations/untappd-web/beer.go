@@ -14,6 +14,12 @@ import (
 	"droscher.com/BeerGargoyle/pkg/model"
 )
 
+const (
+	chromeVersion = "124"
+	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chromeVersion + ".0.0.0 Safari/537.36"
+	secChUa       = `"Chromium";v="` + chromeVersion + `", "Google Chrome";v="` + chromeVersion + `", "Not-A.Brand";v="99"`
+)
+
 type BeerJSON struct {
 	Description string `json:"description"`
 	Brand       struct {
@@ -53,8 +59,10 @@ type scrapeResults struct {
 func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
 	collector := colly.NewCollector(
 		colly.AllowedDomains("untappd.com"),
-		colly.UserAgent("Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1"),
+		colly.UserAgent(userAgent),
 	)
+
+	setBrowserHeaders(collector)
 
 	var (
 		errs         error
@@ -121,6 +129,8 @@ func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
 }
 
 func (u *UntappedWebIntegration) getBeerData(detailCollector *colly.Collector, scraped BeerScraped, breweries map[string]model.Brewery, beerChan chan scrapeResults) {
+	setBrowserHeaders(detailCollector)
+
 	beer := model.Beer{
 		Name:           scraped.Name,
 		ExternalSource: pointy.String(IntegrationName),
@@ -201,6 +211,23 @@ func extractABV(details BeerScraped) *float64 {
 	}
 
 	return nil
+}
+
+func setBrowserHeaders(collector *colly.Collector) {
+	collector.OnRequest(func(req *colly.Request) {
+		req.Headers.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Headers.Set("Accept-Language", "en-US,en;q=0.9")
+		req.Headers.Set("Cache-Control", "no-cache")
+		req.Headers.Set("Pragma", "no-cache")
+		req.Headers.Set("Sec-Ch-Ua", secChUa)
+		req.Headers.Set("Sec-Ch-Ua-Mobile", "?0")
+		req.Headers.Set("Sec-Ch-Ua-Platform", `"Windows"`)
+		req.Headers.Set("Sec-Fetch-Dest", "document")
+		req.Headers.Set("Sec-Fetch-Mode", "navigate")
+		req.Headers.Set("Sec-Fetch-Site", "none")
+		req.Headers.Set("Sec-Fetch-User", "?1")
+		req.Headers.Set("Upgrade-Insecure-Requests", "1")
+	})
 }
 
 func extractIBU(details BeerScraped) *uint64 {

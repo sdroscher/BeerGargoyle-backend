@@ -81,7 +81,7 @@ func (a *Manager) resolveJWTUser(ctx context.Context, header http.Header) (*mode
 		return nil, err
 	}
 
-	keyFunc := func(token *jwt.Token) (interface{}, error) {
+	keyFunc := func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, status.Errorf(codes.Unauthenticated, "unexpected signing method: %v", token.Header["alg"])
 		}
