@@ -96,9 +96,7 @@ func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
 		scrapedPages = append(scrapedPages, scraped)
 	})
 
-	collector.OnError(func(response *colly.Response, err error) {
-		u.logger.Error("error while scraping beer search results", zap.String("url", response.Request.URL.String()), zap.Error(err))
-	})
+	u.registerDebugHandlers(collector)
 
 	u.logger.Info("scraping query results", zap.String("query", name))
 	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/search?q=/"+name))
@@ -211,6 +209,31 @@ func extractABV(details BeerScraped) *float64 {
 	}
 
 	return nil
+}
+
+func (u *UntappedWebIntegration) registerDebugHandlers(collector *colly.Collector) {
+	collector.OnResponse(func(response *colly.Response) {
+		u.logger.Info("scrape response", zap.String("url", response.Request.URL.String()), zap.Int("status_code", response.StatusCode))
+	})
+
+	collector.OnError(func(response *colly.Response, err error) {
+		fields := []zap.Field{
+			zap.String("url", response.Request.URL.String()),
+			zap.Error(err),
+			zap.Int("status_code", response.StatusCode),
+		}
+		for key, vals := range *response.Headers {
+			fields = append(fields, zap.String("resp_header_"+key, strings.Join(vals, ", ")))
+		}
+		if len(response.Body) > 0 {
+			snip := string(response.Body)
+			if len(snip) > 500 {
+				snip = snip[:500]
+			}
+			fields = append(fields, zap.String("resp_body_snippet", snip))
+		}
+		u.logger.Error("error while scraping beer search results", fields...)
+	})
 }
 
 func setBrowserHeaders(collector *colly.Collector) {
