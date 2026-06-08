@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	chromeVersion = "124"
-	userAgent     = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chromeVersion + ".0.0.0 Safari/537.36"
-	secChUa       = `"Chromium";v="` + chromeVersion + `", "Google Chrome";v="` + chromeVersion + `", "Not-A.Brand";v="99"`
+	chromeVersion     = "124"
+	chromeFullVersion = chromeVersion + ".0.6367.155"
+	userAgent         = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/" + chromeVersion + ".0.0.0 Safari/537.36"
+	secChUa           = `"Chromium";v="` + chromeVersion + `", "Google Chrome";v="` + chromeVersion + `", "Not-A.Brand";v="99"`
+	secChUaFullList   = `"Chromium";v="` + chromeFullVersion + `", "Google Chrome";v="` + chromeFullVersion + `", "Not-A.Brand";v="99.0.0.0"`
 )
 
 type BeerJSON struct {
@@ -261,8 +263,14 @@ func setBrowserHeaders(collector *colly.Collector) {
 		req.Headers.Set("Cache-Control", "no-cache")
 		req.Headers.Set("Pragma", "no-cache")
 		req.Headers.Set("Sec-Ch-Ua", secChUa)
+		req.Headers.Set("Sec-Ch-Ua-Arch", `"x86"`)
+		req.Headers.Set("Sec-Ch-Ua-Bitness", `"64"`)
+		req.Headers.Set("Sec-Ch-Ua-Full-Version", `"`+chromeFullVersion+`"`)
+		req.Headers.Set("Sec-Ch-Ua-Full-Version-List", secChUaFullList)
 		req.Headers.Set("Sec-Ch-Ua-Mobile", "?0")
+		req.Headers.Set("Sec-Ch-Ua-Model", `""`)
 		req.Headers.Set("Sec-Ch-Ua-Platform", `"Windows"`)
+		req.Headers.Set("Sec-Ch-Ua-Platform-Version", `"10.0.0"`)
 		req.Headers.Set("Sec-Fetch-Dest", "document")
 		req.Headers.Set("Sec-Fetch-Mode", "navigate")
 		req.Headers.Set("Sec-Fetch-Site", "none")
