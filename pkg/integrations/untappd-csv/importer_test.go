@@ -43,7 +43,7 @@ func makeRows(servingType string, n int) []untappdcsv.Row {
 			BreweryName: "Brewery",
 			ServingType: servingType,
 			CreatedAt:   time.Date(2024, 1, idx+1, 0, 0, 0, 0, time.UTC),
-			CheckinID:   uint64(idx) + 1, //nolint:gosec // idx is always small and positive
+			CheckinID:   uint64(idx) + 1,
 			BeerID:      100,
 			RatingScore: 4.0,
 		}
