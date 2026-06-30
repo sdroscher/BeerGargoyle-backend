@@ -32,35 +32,47 @@ type BreweryJSON struct {
 	} `json:"address"`
 }
 
+// FindBrewery searches Untappd's Algolia "brewery" index, which returns
+// structured JSON and is not behind Cloudflare, so it requires no proxy.
 func (u *UntappedWebIntegration) FindBrewery(name string) ([]model.Brewery, error) {
-	collector := colly.NewCollector(
-		colly.AllowedDomains("untappd.com"),
-	)
+	u.logger.Info("searching untappd breweries", zap.String("query", name))
 
-	var (
-		errs    error
-		results []model.Brewery
-	)
+	hits, err := u.algolia.searchBreweries(name)
+	if err != nil {
+		return nil, err
+	}
 
-	collector.OnHTML(".beer-item", func(element *colly.HTMLElement) {
-		ratingString := element.ChildAttr(".rating > div.caps", "data-rating")
-		rating, _ := strconv.ParseFloat(ratingString, 64)
+	results := make([]model.Brewery, 0, len(hits))
+	for _, hit := range hits {
+		results = append(results, breweryFromHit(hit))
+	}
 
-		if rating > 0.0 {
-			breweryURI := element.ChildAttr(".name > a", "href")
+	return results, nil
+}
 
-			brewery, err := u.getBreweryFromURI(breweryURI, collector)
-			if multierr.AppendInto(&errs, err) {
-				return
-			}
+func breweryFromHit(hit algoliaBreweryHit) model.Brewery {
+	return model.Brewery{
+		Name:     hit.BreweryName,
+		ImageURL: hit.BreweryImage,
+		Address: model.Address{
+			Country:       hit.BreweryCountry,
+			Locality:      hit.BreweryCity,
+			Region:        stringPointer(hit.BreweryState),
+			StreetAddress: stringPointer(hit.BreweryAddress),
+		},
+		ExternalSource: pointy.String(IntegrationName),
+		ExternalID:     pointy.Uint64(hit.BreweryID),
+	}
+}
 
-			results = append(results, brewery)
-		}
-	})
+// GetBreweryDetails fetches a brewery's description, address and rating from its
+// Untappd page (behind Cloudflare, so routed through the configured proxy). Used
+// to enrich a brewery when a beer is first saved.
+func (u *UntappedWebIntegration) GetBreweryDetails(externalID uint64) (model.Brewery, error) {
+	collector := u.newCollector()
+	u.registerDebugHandlers(collector)
 
-	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/search?q=/"+name+"&type=brewery"))
-
-	return results, errs
+	return u.getBreweryFromURI("brewery/"+strconv.FormatUint(externalID, 10), collector)
 }
 
 func (u *UntappedWebIntegration) getBreweryFromURI(uri string, collector *colly.Collector) (model.Brewery, error) {
@@ -89,27 +101,11 @@ func (u *UntappedWebIntegration) getBreweryFromURI(uri string, collector *colly.
 	})
 
 	collector.OnHTML("p.rss a", func(element *colly.HTMLElement) {
-		idLink := element.Attr("href")
-		idString := idLink[strings.LastIndex(idLink, "/")+1:]
-
-		id, err := strconv.ParseUint(idString, 10, 64)
-		if err != nil {
-			u.logger.Error("failed to parse brewery id", zap.String("url", idLink), zap.Error(err))
-		} else {
-			breweryID = id
-		}
+		breweryID = parseTrailingID(u.logger, element.Attr("href"))
 	})
 
 	collector.OnHTML("head meta[property='og:url']", func(element *colly.HTMLElement) {
-		breweryURI := element.Attr("content")
-		idString := breweryURI[strings.LastIndex(breweryURI, "/")+1:]
-
-		id, err := strconv.ParseUint(idString, 10, 64)
-		if err != nil {
-			u.logger.Error("failed to parse brewery id", zap.String("url", breweryURI), zap.Error(err))
-		} else {
-			breweryID = id
-		}
+		breweryID = parseTrailingID(u.logger, element.Attr("content"))
 	})
 
 	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/"+uri))
@@ -119,6 +115,19 @@ func (u *UntappedWebIntegration) getBreweryFromURI(uri string, collector *colly.
 	}
 
 	return brewery, errs
+}
+
+func parseTrailingID(logger *zap.Logger, link string) uint64 {
+	idString := link[strings.LastIndex(link, "/")+1:]
+
+	id, err := strconv.ParseUint(idString, 10, 64)
+	if err != nil {
+		logger.Error("failed to parse brewery id", zap.String("url", link), zap.Error(err))
+
+		return 0
+	}
+
+	return id
 }
 
 func stringPointer(value string) *string {

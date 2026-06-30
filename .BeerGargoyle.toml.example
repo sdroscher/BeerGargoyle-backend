@@ -13,6 +13,33 @@ Port=51000
 [Integrations]
 Beer=["untappd_web"]
 
+[Integrations.Untappd]
+# Search is powered by Untappd's Algolia backend (not behind Cloudflare, no proxy
+# needed). These public search-only credentials default to the values embedded in
+# Untappd's web pages; override only if Untappd rotates them.
+AlgoliaAppID=""
+AlgoliaSearchKey=""
+AlgoliaBeerIndex="beer"
+AlgoliaBreweryIndex="brewery"
+
+# The proxy below is ONLY used to fetch beer/brewery descriptions when a beer is
+# saved. Those pages live on untappd.com (behind Cloudflare), which challenges
+# datacenter IPs (e.g. Fly.io). From residential IPs this works directly, so the
+# proxy can be left unset for local dev. Without a proxy in production, beers are
+# simply saved without a description.
+#
+# Generic proxy URL. Takes precedence over ScraperAPIKey. Set
+# ProxyInsecureSkipVerify=true if the proxy does TLS interception.
+# Recommended free option is Scrape.do's proxy mode (1,000 free calls/month, no
+# card, residential + Cloudflare bypass), e.g.:
+#   Proxy="http://YOUR_TOKEN:super=true&render=false@proxy.scrape.do:8080"
+#   ProxyInsecureSkipVerify=true
+Proxy=""
+ProxyInsecureSkipVerify=false
+# Alternatively, a ScraperAPI key (used only when Proxy is empty). Note ScraperAPI
+# no longer has a free tier — prefer Scrape.do above.
+ScraperAPIKey=""
+
 [Auth]
 SecretKey=""
 Audience=""

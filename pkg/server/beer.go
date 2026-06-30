@@ -31,7 +31,7 @@ func (b *BeerServer) FindBeer(_ context.Context, request *connect.Request[api.Fi
 	var beers []*api.Beer
 
 	for _, integration := range b.config.Integrations.Beer {
-		beerIntegration := integrations.GetIntegration(integration, b.logger)
+		beerIntegration := integrations.GetIntegration(integration, b.config, b.logger)
 
 		foundBeers, err := beerIntegration.FindBeer(request.Msg.GetQuery())
 		if err != nil {
@@ -65,6 +65,8 @@ func (b *BeerServer) AddBeer(ctx context.Context, request *connect.Request[api.A
 			return nil, err
 		}
 	}
+
+	b.enrichBeerDescription(&beer)
 
 	newBeer, err := b.repository.AddBeer(ctx, beer)
 	if err != nil {
@@ -107,8 +109,67 @@ func (b *BeerServer) loadBrewery(ctx context.Context, pbBrewery *api.Brewery, be
 		}
 
 		beer.Brewery = grpc.BreweryToModel(pbBrewery)
+		b.enrichBrewery(&beer.Brewery)
 	} else {
 		beer.BreweryID = brewery.ID
+	}
+}
+
+// enrichBeerDescription fills in a beer's long description from the source
+// integration's detail page when it is missing. Search results no longer carry
+// descriptions (they come from Algolia), so this runs at save time only.
+func (b *BeerServer) enrichBeerDescription(beer *model.Beer) {
+	if beer.ExternalSource == nil || beer.ExternalID == nil || beer.Description != "" {
+		return
+	}
+
+	integration := integrations.GetIntegration(*beer.ExternalSource, b.config, b.logger)
+	if integration == nil {
+		return
+	}
+
+	description, err := integration.GetBeerDescription(*beer.ExternalID)
+	if err != nil {
+		b.logger.Error("failed to fetch beer description for save", zap.Uint64("external_id", *beer.ExternalID), zap.Error(err))
+
+		return
+	}
+
+	beer.Description = description
+}
+
+// enrichBrewery fills in a new brewery's description, address and rating from
+// the source integration's detail page. Only called for breweries not already
+// in the database.
+func (b *BeerServer) enrichBrewery(brewery *model.Brewery) {
+	if brewery.ExternalSource == nil || brewery.ExternalID == nil || brewery.Description != "" {
+		return
+	}
+
+	integration := integrations.GetIntegration(*brewery.ExternalSource, b.config, b.logger)
+	if integration == nil {
+		return
+	}
+
+	details, err := integration.GetBreweryDetails(*brewery.ExternalID)
+	if err != nil {
+		b.logger.Error("failed to fetch brewery details for save", zap.Uint64("external_id", *brewery.ExternalID), zap.Error(err))
+
+		return
+	}
+
+	brewery.Description = details.Description
+
+	if details.ExternalRating != nil {
+		brewery.ExternalRating = details.ExternalRating
+	}
+
+	if brewery.Address.StreetAddress == nil && brewery.Address.Locality == "" {
+		brewery.Address = details.Address
+	}
+
+	if brewery.ImageURL == "" {
+		brewery.ImageURL = details.ImageURL
 	}
 }
 
