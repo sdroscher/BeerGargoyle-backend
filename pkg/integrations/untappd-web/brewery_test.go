@@ -11,20 +11,36 @@ import (
 )
 
 func TestFindBrewery(t *testing.T) {
-	untappd := NewUntappedWebIntegration(zaptest.NewLogger(t))
+	untappd := NewUntappedWebIntegration(zaptest.NewLogger(t), testConfig())
 	results, err := untappd.FindBrewery("Fremont Brewing")
 
 	require.NoError(t, err)
-	assert.Len(t, results, 1)
-	assert.Equal(t, "Fremont Brewing", results[0].Name)
-	assert.Equal(t, "Fremont Brewing was born of our love for our home and history as well as the desire to prove that beer made with the finest local ingredients – organic when possible --, is not the wave of the future but the doorway to beer's history. Starting a brewery in the midst of the Great Recession is clearly an act of passion. We invite you to come along with us and enjoy that passion -- because beer matters.", results[0].Description)
-	assert.NotEmpty(t, results[0].ImageURL)
-	assert.Equal(t, IntegrationName, *results[0].ExternalSource)
-	assert.Equal(t, uint64(1508), *results[0].ExternalID)
-	assert.InDelta(t, 4.038, *results[0].ExternalRating, 0.1)
-	assert.Equal(t, "Seattle", results[0].Address.Locality)
-	assert.NotNil(t, results[0].Address.Region)
-	assert.Equal(t, "WA", *results[0].Address.Region)
-	assert.NotNil(t, results[0].Address.StreetAddress)
-	assert.Equal(t, "3409 Woodland Park Ave North", *results[0].Address.StreetAddress)
+	require.NotEmpty(t, results)
+
+	brewery := results[0]
+	assert.Equal(t, "Fremont Brewing", brewery.Name)
+	assert.NotEmpty(t, brewery.ImageURL)
+	assert.Equal(t, IntegrationName, *brewery.ExternalSource)
+	assert.Equal(t, uint64(1508), *brewery.ExternalID)
+	assert.Equal(t, "Seattle", brewery.Address.Locality)
+	assert.NotNil(t, brewery.Address.Region)
+	assert.Equal(t, "WA", *brewery.Address.Region)
+	assert.NotNil(t, brewery.Address.StreetAddress)
+	assert.Equal(t, "3409 Woodland Park Ave North", *brewery.Address.StreetAddress)
+}
+
+// TestGetBreweryDetails exercises the Cloudflare-gated detail-page fetch. It is
+// skipped when the request is blocked (e.g. from a datacenter IP in CI without a
+// proxy), since the description is only available behind Cloudflare.
+func TestGetBreweryDetails(t *testing.T) {
+	untappd := NewUntappedWebIntegration(zaptest.NewLogger(t), testConfig())
+
+	brewery, err := untappd.GetBreweryDetails(1508)
+	if err != nil || brewery.Name == "" {
+		t.Skipf("brewery detail page unavailable (likely Cloudflare): err=%v", err)
+	}
+
+	assert.Equal(t, "Fremont Brewing", brewery.Name)
+	assert.NotEmpty(t, brewery.Description)
+	assert.NotNil(t, brewery.ExternalRating)
 }

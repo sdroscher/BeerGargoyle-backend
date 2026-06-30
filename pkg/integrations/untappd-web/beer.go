@@ -2,13 +2,11 @@ package untappdweb
 
 import (
 	"encoding/json"
-	"strconv"
+	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/gocolly/colly/v2"
 	"go.openly.dev/pointy"
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
 	"droscher.com/BeerGargoyle/pkg/model"
@@ -22,203 +20,109 @@ const (
 	secChUaFullList   = `"Chromium";v="` + chromeFullVersion + `", "Google Chrome";v="` + chromeFullVersion + `", "Not-A.Brand";v="99.0.0.0"`
 )
 
+// homebrewStylePrefix preserves the original style formatting for homebrews,
+// which Untappd's pages rendered as "Homebrew  |  <style>".
+const homebrewStylePrefix = "Homebrew  |  "
+
+// BeerJSON maps the ld+json embedded in an Untappd beer detail page. Only the
+// description is read; everything else now comes from Algolia search.
 type BeerJSON struct {
 	Description string `json:"description"`
-	Brand       struct {
-		Name string `json:"name"`
-	} `json:"brand"`
-	Image struct {
-		ContentURL string `json:"contentUrl"`
-	} `json:"image"`
-	Sku             uint64 `json:"sku"`
-	AggregateRating struct {
-		RatingValue float64 `json:"ratingValue"`
-		BestRating  string  `json:"bestRating"`
-		ReviewCount int     `json:"reviewCount"`
-	} `json:"aggregateRating"`
 }
 
-type BeerScraped struct {
-	IDLink        string `attr:"href"          selector:"a.label"`
-	Name          string `selector:".name > a"`
-	BreweryIDLink string `attr:"href"          selector:".brewery > a"`
-	Style         string `selector:".style"`
-	ABV           string `selector:".abv"`
-	IBU           string `selector:".ibu"`
-}
-
-type BeerContent struct {
-	Description string `selector:".beer-descrption-read-more"`
-	ImageURL    string `attr:"src"                            selector:"a.label > img"`
-	Rating      string `selector:".details .num"`
-}
-
-type scrapeResults struct {
-	beers []model.Beer
-	err   error
-}
-
+// FindBeer searches Untappd via its Algolia backend, which returns structured
+// JSON and is not behind Cloudflare, so it requires no proxy.
 func (u *UntappedWebIntegration) FindBeer(name string) ([]model.Beer, error) {
-	collector := colly.NewCollector(
-		colly.AllowedDomains("untappd.com"),
-		colly.UserAgent(userAgent),
-	)
+	u.logger.Info("searching untappd beers", zap.String("query", name))
 
-	setBrowserHeaders(collector)
+	hits, err := u.algolia.searchBeers(name)
+	if err != nil {
+		return nil, err
+	}
 
-	var (
-		errs         error
-		results      []model.Beer
-		scrapedPages []BeerScraped
-	)
+	results := make([]model.Beer, 0, len(hits))
+	for _, hit := range hits {
+		results = append(results, beerFromHit(hit))
+	}
 
-	breweries := make(map[string]model.Brewery, 0)
+	u.logger.Info("finished untappd beer search", zap.String("query", name), zap.Int("results", len(results)))
 
-	collector.OnHTML(".beer-item", func(element *colly.HTMLElement) {
-		scraped := BeerScraped{}
+	return results, nil
+}
 
-		err := element.Unmarshal(&scraped)
-		if multierr.AppendInto(&errs, err) {
-			u.logger.Error("failed to unmarshal scraped beer", zap.Error(err))
+func beerFromHit(hit algoliaBeerHit) model.Beer {
+	beer := model.Beer{
+		Name:           hit.BeerName,
+		ImageURL:       firstNonEmpty(hit.BeerLabelHD, hit.BeerLabel),
+		Style:          model.BeerStyle{Name: styleName(hit)},
+		ExternalSource: pointy.String(IntegrationName),
+		ExternalID:     pointy.Uint64(hit.BID),
+		Brewery: model.Brewery{
+			Name:           hit.BreweryName,
+			ImageURL:       hit.BreweryLabel,
+			ExternalSource: pointy.String(IntegrationName),
+			ExternalID:     pointy.Uint64(hit.BreweryID),
+		},
+	}
 
-			return
-		}
+	if hit.BeerABV > 0 {
+		beer.ABV = pointy.Float64(hit.BeerABV)
+	}
 
-		idString := scraped.IDLink[strings.LastIndex(scraped.IDLink, "/")+1:]
+	if hit.BeerIBU > 0 {
+		beer.IBU = pointy.Uint64(uint64(hit.BeerIBU))
+	}
 
-		u.logger.Info("successfully scraped item from results", zap.String("id", idString), zap.String("name", scraped.Name))
+	if hit.RatingScore > 0 {
+		beer.ExternalRating = pointy.Float64(hit.RatingScore)
+	}
 
-		if _, found := breweries[scraped.BreweryIDLink]; !found {
-			err = u.cacheBreweryDetails(scraped.BreweryIDLink, collector, breweries)
-			if multierr.AppendInto(&errs, err) {
-				return
-			}
-		}
+	return beer
+}
 
-		scrapedPages = append(scrapedPages, scraped)
-	})
+func styleName(hit algoliaBeerHit) string {
+	if hit.Homebrew == 1 {
+		return homebrewStylePrefix + hit.TypeName
+	}
 
+	return hit.TypeName
+}
+
+// GetBeerDescription fetches a single beer's long description from its Untappd
+// detail page. The page is behind Cloudflare, so this goes through the
+// configured proxy when running from a datacenter IP.
+func (u *UntappedWebIntegration) GetBeerDescription(externalID uint64) (string, error) {
+	collector := u.newCollector()
 	u.registerDebugHandlers(collector)
 
-	u.logger.Info("scraping query results", zap.String("query", name))
-	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/search?q=/"+name))
+	var description string
 
-	results = make([]model.Beer, 0, len(scrapedPages))
-
-	var beerWG sync.WaitGroup
-
-	beerChan := make(chan scrapeResults, len(scrapedPages))
-
-	for _, scraped := range scrapedPages {
-		beerWG.Add(1)
-
-		go func() {
-			defer beerWG.Done()
-			u.getBeerData(collector.Clone(), scraped, breweries, beerChan)
-		}()
-	}
-
-	beerWG.Wait()
-
-	for range scrapedPages {
-		result := <-beerChan
-		results = append(results, result.beers...)
-		multierr.AppendInto(&errs, result.err)
-	}
-
-	u.logger.Info("finished scraping query results", zap.Any("results", results), zap.Error(errs))
-
-	return results, errs
-}
-
-func (u *UntappedWebIntegration) getBeerData(detailCollector *colly.Collector, scraped BeerScraped, breweries map[string]model.Brewery, beerChan chan scrapeResults) {
-	setBrowserHeaders(detailCollector)
-	u.registerDebugHandlers(detailCollector)
-
-	beer := model.Beer{
-		Name:           scraped.Name,
-		ExternalSource: pointy.String(IntegrationName),
-		Brewery:        breweries[scraped.BreweryIDLink],
-		Style:          model.BeerStyle{Name: scraped.Style},
-		ABV:            extractABV(scraped),
-		IBU:            extractIBU(scraped),
-	}
-
-	detailCollector.OnHTML("head script[type='application/ld+json']", func(element *colly.HTMLElement) {
+	collector.OnHTML("head script[type='application/ld+json']", func(element *colly.HTMLElement) {
 		var beerJSON BeerJSON
-		_ = json.Unmarshal([]byte(element.Text), &beerJSON)
 
-		u.logger.Info("successfully scraped beer from JSON data", zap.Uint64("id", beerJSON.Sku), zap.String("description", beerJSON.Description))
-
-		beer.Description = beerJSON.Description
-		if !strings.HasPrefix(beerJSON.Image.ContentURL, "https://next.untappd.com/og/") {
-			beer.ImageURL = beerJSON.Image.ContentURL
-		}
-		beer.ExternalID = pointy.Uint64(beerJSON.Sku)
-		beer.ExternalRating = pointy.Float64(beerJSON.AggregateRating.RatingValue)
-	})
-
-	detailCollector.OnHTML(".content", func(element *colly.HTMLElement) {
-		beerContent := BeerContent{}
-
-		err := element.Unmarshal(&beerContent)
+		err := json.Unmarshal([]byte(element.Text), &beerJSON)
 		if err != nil {
 			return
 		}
 
-		if len(beer.Description) == 0 {
-			beer.Description = beerContent.Description
-		}
-
-		if len(beer.ImageURL) == 0 {
-			beer.ImageURL = beerContent.ImageURL
-		}
-
-		if beer.ExternalRating == nil {
-			rating, err := strconv.ParseFloat(beerContent.Rating, 64)
-			if err == nil {
-				beer.ExternalRating = pointy.Float64(rating)
-			}
+		if beerJSON.Description != "" {
+			description = beerJSON.Description
 		}
 	})
 
-	idString := scraped.IDLink[strings.LastIndex(scraped.IDLink, "/")+1:]
-	u.logger.Info("scraping beer page", zap.String("id", idString))
+	err := collector.Visit(fmt.Sprintf("https://untappd.com/beer/%d", externalID))
 
-	err := detailCollector.Visit("https://untappd.com/beer/" + idString)
-	if err == nil && beer.ExternalID == nil {
-		externalID, err := strconv.ParseUint(idString, 10, 64)
-		if err == nil {
-			beer.ExternalID = pointy.Uint64(externalID)
+	return description, err
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
 		}
 	}
 
-	beerChan <- scrapeResults{beers: []model.Beer{beer}, err: err}
-}
-
-func (u *UntappedWebIntegration) cacheBreweryDetails(breweryURI string, collector *colly.Collector, breweries map[string]model.Brewery) error {
-	clone := collector.Clone()
-	setBrowserHeaders(clone)
-	u.registerDebugHandlers(clone)
-
-	brewery, err := u.getBreweryFromURI(breweryURI, clone)
-	if err != nil {
-		return err
-	}
-
-	breweries[breweryURI] = brewery
-
-	return nil
-}
-
-func extractABV(details BeerScraped) *float64 {
-	if strings.Contains(details.ABV, "%") {
-		abv, _ := strconv.ParseFloat(details.ABV[:strings.Index(details.ABV, "%")], 64) //nolint: gocritic // We know we won't get -1
-
-		return &abv
-	}
-
-	return nil
+	return ""
 }
 
 func (u *UntappedWebIntegration) registerDebugHandlers(collector *colly.Collector) {
@@ -244,7 +148,7 @@ func (u *UntappedWebIntegration) registerDebugHandlers(collector *colly.Collecto
 			}
 			fields = append(fields, zap.String("resp_body_snippet", string(runes)))
 		}
-		u.logger.Error("error while scraping beer search results", fields...)
+		u.logger.Error("error while scraping beer detail page", fields...)
 	})
 }
 
@@ -277,14 +181,4 @@ func setBrowserHeaders(collector *colly.Collector) {
 		req.Headers.Set("Sec-Fetch-User", "?1")
 		req.Headers.Set("Upgrade-Insecure-Requests", "1")
 	})
-}
-
-func extractIBU(details BeerScraped) *uint64 {
-	if !strings.HasPrefix(details.IBU, "N/A") {
-		ibu, _ := strconv.ParseUint(strings.Split(details.IBU, " ")[0], 0, 64)
-
-		return pointy.Uint64(ibu)
-	}
-
-	return nil
 }
