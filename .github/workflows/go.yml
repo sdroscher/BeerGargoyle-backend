@@ -26,7 +26,7 @@ jobs:
       - name: Generate protobuf files
         run: buf generate protobuf
 
-      - uses: brokeyourbike/go-mockery-action@v0.1.7
+      - uses: brokeyourbike/go-mockery-action@v0.2.0
         with:
           mockery-version: 3.5.1
 
@@ -55,7 +55,7 @@ jobs:
       - name: Generate protobuf files
         run: buf generate protobuf
 
-      - uses: brokeyourbike/go-mockery-action@v0.1.7
+      - uses: brokeyourbike/go-mockery-action@v0.2.0
         with:
           mockery-version: 3.5.1
 
