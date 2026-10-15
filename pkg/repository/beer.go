@@ -12,6 +12,17 @@ import (
 
 var ErrBreweryNotFound = errors.New("brewery not found")
 
+// BeerRepository is the data access surface used by the beer and cellar services.
+type BeerRepository interface {
+	AddBeer(ctx context.Context, beer model.Beer) (*model.Beer, error)
+	FindBreweryByExternalSource(ctx context.Context, externalID uint64, externalSource string) (*model.Brewery, error)
+	AddBeerStyle(ctx context.Context, beerStyle model.BeerStyle) (*model.BeerStyle, error)
+	GetBeerFormats(ctx context.Context) ([]*model.BeerFormat, error)
+	GetTagsByNames(ctx context.Context, names []string) (map[string]model.Tag, error)
+}
+
+var _ BeerRepository = (*Repository)(nil)
+
 func (r *Repository) AddBeer(ctx context.Context, beer model.Beer) (*model.Beer, error) {
 	result := r.DB.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "name"}, {Name: "brewery_id"}},
