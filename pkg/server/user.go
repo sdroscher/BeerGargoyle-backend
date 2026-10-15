@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/bufbuild/connect-go"
 	"go.openly.dev/pointy"
@@ -17,15 +18,19 @@ var ErrUserNotFound = errors.New("user not found")
 
 type UserServer struct {
 	apiv1connect.UnimplementedUserServiceHandler
-	repository *repository.Repository
+	repository repository.UserRepository
 	logger     *zap.Logger
 }
 
-func NewUserServer(repository *repository.Repository, logger *zap.Logger) *UserServer {
+func NewUserServer(repository repository.UserRepository, logger *zap.Logger) *UserServer {
 	return &UserServer{repository: repository, logger: logger}
 }
 
 func (u *UserServer) AddUser(ctx context.Context, request *connect.Request[api.AddUserRequest]) (*connect.Response[api.AddUserResponse], error) {
+	if request.Msg.GetEmail() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: email is required", ErrInvalidInput))
+	}
+
 	var untappdUserName *string
 
 	if len(request.Msg.GetUntappedUsername()) > 0 {

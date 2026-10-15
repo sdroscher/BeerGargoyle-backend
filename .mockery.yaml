@@ -14,6 +14,7 @@ packages:
       ActivityRepository: {}
       BeerRepository: {}
       CellarRepository: {}
+      UserRepository: {}
   droscher.com/BeerGargoyle/pkg/integrations:
     config:
       all: false

@@ -29,6 +29,7 @@ const (
 	basementName  = "Basement"
 	bobName       = "bob"
 	bobEmail      = "bob@example.com"
+	bobUntappd    = "bob_untappd"
 	fridgeName    = "Fridge"
 	shelfName     = "Shelf"
 	tagSour       = "sour"
@@ -675,7 +676,7 @@ func ctxWithFullUser(userUUID uuid.UUID) (context.Context, *model.User) {
 		UUID:            userUUID,
 		Username:        bobName,
 		Email:           bobEmail,
-		UntappdUserName: pointy.String("bob_untappd"),
+		UntappdUserName: pointy.String(bobUntappd),
 	}
 
 	return context.WithValue(context.Background(), auth.UserKey{}, user), user
@@ -705,7 +706,7 @@ func (suite *CellarTestSuite) TestAddCellar_Success() {
 	suite.Equal(uint64(7), cellar.GetCellarId())
 	suite.Equal(basementName, cellar.GetName())
 	suite.Equal(bobName, cellar.GetOwner().GetUserName())
-	suite.Equal("bob_untappd", cellar.GetOwner().GetUntappedUsername())
+	suite.Equal(bobUntappd, cellar.GetOwner().GetUntappedUsername())
 	suite.Require().Len(cellar.GetLocations(), 2)
 	suite.Equal(shelfName, cellar.GetLocations()[1].GetName())
 }
