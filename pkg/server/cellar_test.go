@@ -30,6 +30,9 @@ const (
 	bobName       = "bob"
 	bobEmail      = "bob@example.com"
 	fridgeName    = "Fridge"
+	shelfName     = "Shelf"
+	tagSour       = "sour"
+	tagGift       = "gift"
 )
 
 // ctxWithUser returns a context containing a minimal authenticated user with the given ID.
@@ -682,11 +685,11 @@ func (suite *CellarTestSuite) TestAddCellar_Success() {
 	ownerUUID := uuid.New()
 	ctx, user := ctxWithFullUser(ownerUUID)
 
-	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "Cool and dark", []string{fridgeName, "Shelf"}, *user).Return(&model.Cellar{
+	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "Cool and dark", []string{fridgeName, shelfName}, *user).Return(&model.Cellar{
 		Model: gorm.Model{ID: 7},
 		Locations: []model.LocationInCellar{
 			{Model: gorm.Model{ID: 1}, Name: fridgeName},
-			{Model: gorm.Model{ID: 2}, Name: "Shelf"},
+			{Model: gorm.Model{ID: 2}, Name: shelfName},
 		},
 	}, nil)
 
@@ -694,7 +697,7 @@ func (suite *CellarTestSuite) TestAddCellar_Success() {
 		OwnerUuid:   ownerUUID.String(),
 		Name:        basementName,
 		Description: "Cool and dark",
-		Locations:   []string{fridgeName, "Shelf"},
+		Locations:   []string{fridgeName, shelfName},
 	}))
 
 	suite.Require().NoError(err)
@@ -704,7 +707,7 @@ func (suite *CellarTestSuite) TestAddCellar_Success() {
 	suite.Equal(bobName, cellar.GetOwner().GetUserName())
 	suite.Equal("bob_untappd", cellar.GetOwner().GetUntappedUsername())
 	suite.Require().Len(cellar.GetLocations(), 2)
-	suite.Equal("Shelf", cellar.GetLocations()[1].GetName())
+	suite.Equal(shelfName, cellar.GetLocations()[1].GetName())
 }
 
 func (suite *CellarTestSuite) TestAddCellar_NoUserInContext() {
@@ -743,5 +746,154 @@ func (suite *CellarTestSuite) TestAddCellar_RepositoryError() {
 	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: ownerUUID.String(), Name: basementName}))
 
 	suite.Require().ErrorContains(err, "duplicate cellar")
+	suite.Nil(result)
+}
+
+// captureAddedEntry stubs the cellar ownership check and the save, returning a pointer that is
+// populated with the entry (and timestamp) the handler passed to AddBeerToCellarWithActivity.
+func (suite *CellarTestSuite) captureAddedEntry(ctx context.Context) (*model.CellarEntry, *time.Time) {
+	var (
+		captured   model.CellarEntry
+		capturedAt time.Time
+	)
+
+	saved := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}
+
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx,
+		mock.MatchedBy(func(entry model.CellarEntry) bool {
+			captured = entry
+
+			return true
+		}),
+		mock.MatchedBy(func(occurredAt time.Time) bool {
+			capturedAt = occurredAt
+
+			return true
+		}),
+	).Return(saved, nil)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(saved, nil)
+
+	return &captured, &capturedAt
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_MapsAllOptionalFields() {
+	ctx := ctxWithUser(1)
+	captured, capturedAt := suite.captureAddedEntry(ctx)
+	drinkBefore := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	cellarUntil := time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC)
+	dateAdded := time.Date(2025, 3, 4, 0, 0, 0, 0, time.UTC)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId:    1,
+		BeerId:      5,
+		LocationId:  3,
+		Quantity:    6,
+		FormatId:    pointy.Uint64(2),
+		Vintage:     pointy.Uint64(2020),
+		HadBefore:   true,
+		Special:     true,
+		DrinkBefore: timestamppb.New(drinkBefore),
+		CellarUntil: timestamppb.New(cellarUntil),
+		DateAdded:   timestamppb.New(dateAdded),
+	}))
+
+	suite.Require().NoError(err)
+	suite.Equal(uint(5), captured.BeerID)
+	suite.Equal(int64(6), captured.Quantity)
+	suite.Require().NotNil(captured.LocationID)
+	suite.Equal(uint(3), *captured.LocationID)
+	suite.Require().NotNil(captured.FormatID)
+	suite.Equal(uint(2), *captured.FormatID)
+	suite.Require().NotNil(captured.Vintage)
+	suite.Equal(uint64(2020), *captured.Vintage)
+	suite.True(captured.HadBefore)
+	suite.True(captured.Special)
+	suite.Equal(drinkBefore, *captured.DrinkBefore)
+	suite.Equal(cellarUntil, *captured.CellarUntil)
+	suite.Equal(dateAdded, *captured.DateAdded)
+	suite.Equal(dateAdded, *capturedAt, "activity timestamp should be the supplied date_added")
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_UnsetOptionalsStayNil() {
+	ctx := ctxWithUser(1)
+	captured, capturedAt := suite.captureAddedEntry(ctx)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().NoError(err)
+	suite.Nil(captured.LocationID, "location_id 0 means 'none', not a FK to row 0")
+	suite.Nil(captured.FormatID)
+	suite.Nil(captured.Vintage)
+	suite.Nil(captured.DateAdded)
+	suite.Nil(captured.DrinkBefore)
+	suite.Nil(captured.CellarUntil)
+	suite.WithinDuration(time.Now().UTC(), *capturedAt, 5*time.Second)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_ReusesExistingTagsAndCreatesNewOnes() {
+	ctx := ctxWithUser(1)
+	captured, _ := suite.captureAddedEntry(ctx)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagSour, tagGift}).
+		Return(map[string]model.Tag{tagSour: {Model: gorm.Model{ID: 4}, Tag: tagSour}}, nil)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId: 1, BeerId: 5, Quantity: 1, Tags: []string{tagSour, tagGift},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(captured.Tags, 2)
+	suite.Equal(uint(4), captured.Tags[0].ID)
+	suite.Equal(tagGift, captured.Tags[1].Tag)
+	suite.Zero(captured.Tags[1].ID)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_TagLookupErrorFallsBackToNewTags() {
+	ctx := ctxWithUser(1)
+	captured, _ := suite.captureAddedEntry(ctx)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagSour}).Return(nil, errors.New(dbDownMessage))
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId: 1, BeerId: 5, Quantity: 1, Tags: []string{tagSour},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(captured.Tags, 1)
+	suite.Equal(tagSour, captured.Tags[0].Tag)
+	suite.Equal(1, suite.observedLogs.FilterMessage("error getting tags by name").Len())
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_ReloadFailureFallsBackToSavedEntry() {
+	ctx := ctxWithUser(1)
+	saved := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 2}
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx, mock.AnythingOfType("model.CellarEntry"), mock.AnythingOfType("time.Time")).Return(saved, nil)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("reload failed"))
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 2}))
+
+	suite.Require().NoError(err)
+	suite.Equal(uint64(10), result.Msg.GetBeer().GetCellarEntryId())
+	suite.Equal(1, suite.observedLogs.FilterMessage("error loading cellar entry after saving").Len())
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_SaveError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx, mock.AnythingOfType("model.CellarEntry"), mock.AnythingOfType("time.Time")).Return(nil, errors.New("fk violation"))
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().ErrorContains(err, "fk violation")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
 	suite.Nil(result)
 }
