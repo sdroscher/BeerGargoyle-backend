@@ -2,10 +2,12 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/bufbuild/connect-go"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.openly.dev/pointy"
@@ -19,6 +21,15 @@ import (
 	"droscher.com/BeerGargoyle/pkg/auth"
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/server"
+)
+
+// Shared test constants (goconst: repeated literals across the server_test package).
+const (
+	dbDownMessage = "db down"
+	basementName  = "Basement"
+	bobName       = "bob"
+	bobEmail      = "bob@example.com"
+	fridgeName    = "Fridge"
 )
 
 // ctxWithUser returns a context containing a minimal authenticated user with the given ID.
@@ -36,6 +47,7 @@ func ownedCellar() *model.Cellar {
 type CellarTestSuite struct {
 	suite.Suite
 	cellarRepo   *mocks.CellarRepository
+	beerRepo     *mocks.BeerRepository
 	activityRepo *mocks.ActivityRepository
 	service      *server.CellarServer
 	observedLogs *observer.ObservedLogs
@@ -47,11 +59,12 @@ func TestCellarTestSuite(t *testing.T) {
 
 func (suite *CellarTestSuite) SetupTest() {
 	suite.cellarRepo = mocks.NewCellarRepository(suite.T())
+	suite.beerRepo = mocks.NewBeerRepository(suite.T())
 	suite.activityRepo = mocks.NewActivityRepository(suite.T())
 	observedZapCore, observedLogs := observer.New(zap.InfoLevel)
 	suite.observedLogs = observedLogs
 	observedLogger := zap.New(observedZapCore)
-	suite.service = server.NewCellarServer(suite.cellarRepo, nil, suite.activityRepo, observedLogger)
+	suite.service = server.NewCellarServer(suite.cellarRepo, suite.beerRepo, suite.activityRepo, observedLogger)
 }
 
 func (suite *CellarTestSuite) TestCreateAdventCalendar_ErrorMissingFilters() {
@@ -651,4 +664,84 @@ func (suite *CellarTestSuite) TestAddCellarBeer_CreatesActivity() {
 
 	suite.Require().NoError(err)
 	suite.NotNil(resp.Msg.Beer)
+}
+
+func ctxWithFullUser(userUUID uuid.UUID) (context.Context, *model.User) {
+	user := &model.User{
+		Model:           gorm.Model{ID: 1},
+		UUID:            userUUID,
+		Username:        bobName,
+		Email:           bobEmail,
+		UntappdUserName: pointy.String("bob_untappd"),
+	}
+
+	return context.WithValue(context.Background(), auth.UserKey{}, user), user
+}
+
+func (suite *CellarTestSuite) TestAddCellar_Success() {
+	ownerUUID := uuid.New()
+	ctx, user := ctxWithFullUser(ownerUUID)
+
+	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "Cool and dark", []string{fridgeName, "Shelf"}, *user).Return(&model.Cellar{
+		Model: gorm.Model{ID: 7},
+		Locations: []model.LocationInCellar{
+			{Model: gorm.Model{ID: 1}, Name: fridgeName},
+			{Model: gorm.Model{ID: 2}, Name: "Shelf"},
+		},
+	}, nil)
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{
+		OwnerUuid:   ownerUUID.String(),
+		Name:        basementName,
+		Description: "Cool and dark",
+		Locations:   []string{fridgeName, "Shelf"},
+	}))
+
+	suite.Require().NoError(err)
+	cellar := result.Msg.GetCellar()
+	suite.Equal(uint64(7), cellar.GetCellarId())
+	suite.Equal(basementName, cellar.GetName())
+	suite.Equal(bobName, cellar.GetOwner().GetUserName())
+	suite.Equal("bob_untappd", cellar.GetOwner().GetUntappedUsername())
+	suite.Require().Len(cellar.GetLocations(), 2)
+	suite.Equal("Shelf", cellar.GetLocations()[1].GetName())
+}
+
+func (suite *CellarTestSuite) TestAddCellar_NoUserInContext() {
+	result, err := suite.service.AddCellar(context.Background(), connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: uuid.NewString()}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_InvalidOwnerUUID() {
+	ctx, _ := ctxWithFullUser(uuid.New())
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: "not-a-uuid"}))
+
+	suite.Require().Error(err)
+	suite.Equal(connect.CodeInvalidArgument, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_OwnerUUIDMismatch() {
+	ctx, _ := ctxWithFullUser(uuid.New())
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: uuid.NewString()}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_RepositoryError() {
+	ownerUUID := uuid.New()
+	ctx, user := ctxWithFullUser(ownerUUID)
+	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "", []string(nil), *user).Return(nil, errors.New("duplicate cellar"))
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: ownerUUID.String(), Name: basementName}))
+
+	suite.Require().ErrorContains(err, "duplicate cellar")
+	suite.Nil(result)
 }

@@ -80,7 +80,7 @@ func (suite *BeerServerTestSuite) TestGetBeerFormats_Success() {
 
 func (suite *BeerServerTestSuite) TestGetBeerFormats_RepositoryError() {
 	ctx := context.Background()
-	suite.beerRepo.EXPECT().GetBeerFormats(ctx).Return(nil, errors.New("db down"))
+	suite.beerRepo.EXPECT().GetBeerFormats(ctx).Return(nil, errors.New(dbDownMessage))
 
 	result, err := suite.service.GetBeerFormats(ctx, connect.NewRequest(&apiv1.GetBeerFormatsRequest{}))
 
@@ -204,7 +204,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_NewBreweryIsEnriched() {
 
 func (suite *BeerServerTestSuite) TestAddBeer_BreweryLookupErrorStillSaves() {
 	ctx := context.Background()
-	suite.beerRepo.EXPECT().FindBreweryByExternalSource(ctx, uint64(55), "other").Return(nil, errors.New("db down"))
+	suite.beerRepo.EXPECT().FindBreweryByExternalSource(ctx, uint64(55), "other").Return(nil, errors.New(dbDownMessage))
 	suite.beerRepo.EXPECT().AddBeer(ctx, mock.MatchedBy(func(beer model.Beer) bool {
 		return beer.Brewery.Name == breweryA
 	})).Return(&model.Beer{Name: hazyIPA}, nil)
