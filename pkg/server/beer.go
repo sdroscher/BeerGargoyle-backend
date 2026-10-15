@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/bufbuild/connect-go"
 	"go.uber.org/zap"
@@ -16,22 +17,46 @@ import (
 	"droscher.com/BeerGargoyle/pkg/server/grpc"
 )
 
-type BeerServer struct {
-	apiv1connect.UnimplementedBeerServiceHandler
-	repository *repository.Repository
-	logger     *zap.Logger
-	config     *configs.Config
+// IntegrationResolver looks up a beer-search integration by its configured name.
+// It returns nil when the name is unknown.
+type IntegrationResolver func(name string, config *configs.Config, logger *zap.Logger) integrations.Integration
+
+// BeerServerOption customises a BeerServer.
+type BeerServerOption func(*BeerServer)
+
+// WithIntegrationResolver overrides how integrations are looked up (used by tests).
+func WithIntegrationResolver(resolver IntegrationResolver) BeerServerOption {
+	return func(b *BeerServer) { b.resolveIntegration = resolver }
 }
 
-func NewBeerServer(repository *repository.Repository, logger *zap.Logger, config *configs.Config) *BeerServer {
-	return &BeerServer{repository: repository, logger: logger, config: config}
+type BeerServer struct {
+	apiv1connect.UnimplementedBeerServiceHandler
+	repository         repository.BeerRepository
+	logger             *zap.Logger
+	config             *configs.Config
+	resolveIntegration IntegrationResolver
+}
+
+func NewBeerServer(repository repository.BeerRepository, logger *zap.Logger, config *configs.Config, opts ...BeerServerOption) *BeerServer {
+	beerServer := &BeerServer{repository: repository, logger: logger, config: config, resolveIntegration: integrations.GetIntegration}
+
+	for _, opt := range opts {
+		opt(beerServer)
+	}
+
+	return beerServer
 }
 
 func (b *BeerServer) FindBeer(_ context.Context, request *connect.Request[api.FindBeerRequest]) (*connect.Response[api.FindBeerResponse], error) {
 	var beers []*api.Beer
 
 	for _, integration := range b.config.Integrations.Beer {
-		beerIntegration := integrations.GetIntegration(integration, b.config, b.logger)
+		beerIntegration := b.resolveIntegration(integration, b.config, b.logger)
+		if beerIntegration == nil {
+			b.logger.Warn("unknown beer integration", zap.String("integration", integration))
+
+			continue
+		}
 
 		foundBeers, err := beerIntegration.FindBeer(request.Msg.GetQuery())
 		if err != nil {
@@ -49,6 +74,10 @@ func (b *BeerServer) FindBeer(_ context.Context, request *connect.Request[api.Fi
 }
 
 func (b *BeerServer) AddBeer(ctx context.Context, request *connect.Request[api.AddBeerRequest]) (*connect.Response[api.AddBeerResponse], error) {
+	if request.Msg.GetBeer() == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: beer is required", ErrInvalidInput))
+	}
+
 	beer := grpc.BeerToModel(request.Msg.GetBeer())
 
 	if request.Msg.GetBeer().GetBrewery() != nil {
@@ -123,7 +152,7 @@ func (b *BeerServer) enrichBeerDescription(beer *model.Beer) {
 		return
 	}
 
-	integration := integrations.GetIntegration(*beer.ExternalSource, b.config, b.logger)
+	integration := b.resolveIntegration(*beer.ExternalSource, b.config, b.logger)
 	if integration == nil {
 		return
 	}
@@ -146,7 +175,7 @@ func (b *BeerServer) enrichBrewery(brewery *model.Brewery) {
 		return
 	}
 
-	integration := integrations.GetIntegration(*brewery.ExternalSource, b.config, b.logger)
+	integration := b.resolveIntegration(*brewery.ExternalSource, b.config, b.logger)
 	if integration == nil {
 		return
 	}
