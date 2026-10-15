@@ -75,6 +75,14 @@ func (suite *UserServerTestSuite) TestAddUser_EmptyEmailIsInvalidArgument() {
 	suite.Nil(result)
 }
 
+func (suite *UserServerTestSuite) TestAddUser_WhitespaceOnlyEmailIsInvalidArgument() {
+	result, err := suite.service.AddUser(context.Background(), connect.NewRequest(&apiv1.AddUserRequest{Name: bobName, Email: "   "}))
+
+	suite.Require().ErrorIs(err, server.ErrInvalidInput)
+	suite.Equal(connect.CodeInvalidArgument, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
 func (suite *UserServerTestSuite) TestAddUser_RepositoryError() {
 	ctx := context.Background()
 	suite.userRepo.EXPECT().AddUser(ctx, bobName, bobEmail, mock.Anything).Return(nil, errors.New("duplicate email"))

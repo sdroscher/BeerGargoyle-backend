@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/bufbuild/connect-go"
 	"go.openly.dev/pointy"
@@ -28,7 +29,7 @@ func NewUserServer(repository repository.UserRepository, logger *zap.Logger) *Us
 }
 
 func (u *UserServer) AddUser(ctx context.Context, request *connect.Request[api.AddUserRequest]) (*connect.Response[api.AddUserResponse], error) {
-	if request.Msg.GetEmail() == "" {
+	if strings.TrimSpace(request.Msg.GetEmail()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: email is required", ErrInvalidInput))
 	}
 
