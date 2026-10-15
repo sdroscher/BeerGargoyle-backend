@@ -19,7 +19,10 @@ import (
 	"droscher.com/BeerGargoyle/pkg/server"
 )
 
-const fakeIntegration = "fake"
+const (
+	fakeIntegration = "fake"
+	ipaQuery        = "ipa"
+)
 
 type BeerServerTestSuite struct {
 	suite.Suite
@@ -76,4 +79,47 @@ func (suite *BeerServerTestSuite) TestGetBeerFormats_RepositoryError() {
 
 	suite.Require().ErrorContains(err, "db down")
 	suite.Nil(result)
+}
+
+func (suite *BeerServerTestSuite) TestFindBeer_Success() {
+	suite.integration.EXPECT().FindBeer(ipaQuery).Return([]model.Beer{
+		{Name: "Hazy IPA", Brewery: model.Brewery{Name: "Brew A"}},
+		{Name: "West Coast IPA", Brewery: model.Brewery{Name: "Brew B"}},
+	}, nil)
+
+	result, err := suite.service.FindBeer(context.Background(), connect.NewRequest(&apiv1.FindBeerRequest{Query: ipaQuery}))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(result.Msg.GetBeers(), 2)
+	suite.Equal("Hazy IPA", result.Msg.GetBeers()[0].GetName())
+}
+
+func (suite *BeerServerTestSuite) TestFindBeer_IntegrationErrorIsLoggedAndSkipped() {
+	suite.integration.EXPECT().FindBeer(ipaQuery).Return(nil, errors.New("algolia down"))
+
+	result, err := suite.service.FindBeer(context.Background(), connect.NewRequest(&apiv1.FindBeerRequest{Query: ipaQuery}))
+
+	suite.Require().NoError(err)
+	suite.Empty(result.Msg.GetBeers())
+	suite.Equal(1, suite.observedLogs.FilterMessage("failed beer search").Len())
+}
+
+func (suite *BeerServerTestSuite) TestFindBeer_UnknownIntegrationIsSkipped() {
+	suite.config.Integrations.Beer = []string{"typo", fakeIntegration}
+	suite.integration.EXPECT().FindBeer(ipaQuery).Return([]model.Beer{{Name: "Hazy IPA"}}, nil)
+
+	result, err := suite.service.FindBeer(context.Background(), connect.NewRequest(&apiv1.FindBeerRequest{Query: ipaQuery}))
+
+	suite.Require().NoError(err)
+	suite.Len(result.Msg.GetBeers(), 1)
+	suite.Equal(1, suite.observedLogs.FilterMessage("unknown beer integration").Len())
+}
+
+func (suite *BeerServerTestSuite) TestFindBeer_NoIntegrationsConfigured() {
+	suite.config.Integrations.Beer = nil
+
+	result, err := suite.service.FindBeer(context.Background(), connect.NewRequest(&apiv1.FindBeerRequest{Query: ipaQuery}))
+
+	suite.Require().NoError(err)
+	suite.Empty(result.Msg.GetBeers())
 }

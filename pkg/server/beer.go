@@ -51,6 +51,11 @@ func (b *BeerServer) FindBeer(_ context.Context, request *connect.Request[api.Fi
 
 	for _, integration := range b.config.Integrations.Beer {
 		beerIntegration := b.resolveIntegration(integration, b.config, b.logger)
+		if beerIntegration == nil {
+			b.logger.Warn("unknown beer integration", zap.String("integration", integration))
+
+			continue
+		}
 
 		foundBeers, err := beerIntegration.FindBeer(request.Msg.GetQuery())
 		if err != nil {
