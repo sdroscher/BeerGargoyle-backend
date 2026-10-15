@@ -84,3 +84,53 @@ func (suite *UserServerTestSuite) TestAddUser_RepositoryError() {
 	suite.Require().ErrorContains(err, "duplicate email")
 	suite.Nil(result)
 }
+
+func (suite *UserServerTestSuite) TestGetUserByEmail_Success() {
+	ctx := context.Background()
+	userUUID := uuid.New()
+	suite.userRepo.EXPECT().GetUserFromEmail(ctx, bobEmail).Return(&model.User{
+		UUID: userUUID, Username: bobName, Email: bobEmail, UntappdUserName: pointy.String(bobUntappd),
+	}, nil)
+
+	result, err := suite.service.GetUserByEmail(ctx, connect.NewRequest(&apiv1.GetUserByEmailRequest{Email: bobEmail}))
+
+	suite.Require().NoError(err)
+	user := result.Msg.GetUser()
+	suite.Equal(userUUID.String(), user.GetId())
+	suite.Equal(bobName, user.GetUserName())
+	suite.Equal(bobUntappd, user.GetUntappedUsername())
+}
+
+func (suite *UserServerTestSuite) TestGetUserByEmail_NoUntappdUsername() {
+	ctx := context.Background()
+	suite.userRepo.EXPECT().GetUserFromEmail(ctx, bobEmail).
+		Return(&model.User{UUID: uuid.New(), Username: bobName, Email: bobEmail}, nil)
+
+	result, err := suite.service.GetUserByEmail(ctx, connect.NewRequest(&apiv1.GetUserByEmailRequest{Email: bobEmail}))
+
+	suite.Require().NoError(err)
+	suite.Nil(result.Msg.GetUser().UntappedUsername)
+}
+
+func (suite *UserServerTestSuite) TestGetUserByEmail_NotFound() {
+	ctx := context.Background()
+	suite.userRepo.EXPECT().GetUserFromEmail(ctx, nobodyEmail).Return(nil, gorm.ErrRecordNotFound)
+
+	result, err := suite.service.GetUserByEmail(ctx, connect.NewRequest(&apiv1.GetUserByEmailRequest{Email: nobodyEmail}))
+
+	suite.Require().ErrorIs(err, server.ErrUserNotFound)
+	suite.Equal(connect.CodeNotFound, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *UserServerTestSuite) TestGetUserByEmail_OtherErrorsAreNotReportedAsNotFound() {
+	ctx := context.Background()
+	suite.userRepo.EXPECT().GetUserFromEmail(ctx, bobEmail).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetUserByEmail(ctx, connect.NewRequest(&apiv1.GetUserByEmailRequest{Email: bobEmail}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Require().NotErrorIs(err, server.ErrUserNotFound)
+	suite.NotEqual(connect.CodeNotFound, connect.CodeOf(err))
+	suite.Nil(result)
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/bufbuild/connect-go"
 	"go.openly.dev/pointy"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
 	"droscher.com/BeerGargoyle/generated/grpc/api/v1/apiv1connect"
@@ -55,6 +56,10 @@ func (u *UserServer) AddUser(ctx context.Context, request *connect.Request[api.A
 func (u *UserServer) GetUserByEmail(ctx context.Context, request *connect.Request[api.GetUserByEmailRequest]) (*connect.Response[api.GetUserByEmailResponse], error) {
 	user, err := u.repository.GetUserFromEmail(ctx, request.Msg.GetEmail())
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", ErrUserNotFound, request.Msg.GetEmail()))
+		}
+
 		return nil, err
 	}
 

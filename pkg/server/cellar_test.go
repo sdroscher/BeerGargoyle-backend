@@ -30,6 +30,7 @@ const (
 	bobName       = "bob"
 	bobEmail      = "bob@example.com"
 	bobUntappd    = "bob_untappd"
+	nobodyEmail   = "nobody@example.com"
 	fridgeName    = "Fridge"
 	shelfName     = "Shelf"
 	tagSour       = "sour"
