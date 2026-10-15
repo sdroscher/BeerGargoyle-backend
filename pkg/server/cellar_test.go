@@ -897,3 +897,262 @@ func (suite *CellarTestSuite) TestAddCellarBeer_NotOwner() {
 	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
 	suite.Nil(result)
 }
+
+func (suite *CellarTestSuite) TestRequireOwner_NoUserInContext() {
+	result, err := suite.service.GetCellar(context.Background(), connect.NewRequest(&apiv1.GetCellarRequest{CellarId: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestRequireOwner_RepositoryErrorPropagates() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellar(ctx, connect.NewRequest(&apiv1.GetCellarRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Require().NotErrorIs(err, server.ErrCellarNotFound)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarList_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarsForUser(ctx, model.User{Model: gorm.Model{ID: 1}}).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellarList(ctx, connect.NewRequest(&apiv1.GetCellarListRequest{}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarEntry_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("entry not found"))
+
+	result, err := suite.service.GetCellarEntry(ctx, connect.NewRequest(&apiv1.GetCellarEntryRequest{CellarEntryId: 10}))
+
+	suite.Require().Error(err)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarEntry_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.GetCellarEntry(ctx, connect.NewRequest(&apiv1.GetCellarEntryRequest{CellarEntryId: 10}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarStats_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarStats(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellarStats(ctx, connect.NewRequest(&apiv1.GetCellarStatsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestListCellarBeers_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBeers(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.ListCellarBeers(ctx, connect.NewRequest(&apiv1.ListCellarBeersRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_EntryLookupError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("entry not found"))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10}))
+
+	suite.Require().Error(err)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(0)}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_DeleteError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().DeleteCellarEntry(ctx, uint(10)).Return(errors.New(dbDownMessage))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(0)}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_UpdateError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, mock.Anything).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(2)}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_AppliesEveryProvidedField() {
+	ctx := ctxWithUser(1)
+	existing := &model.CellarEntry{
+		Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 1,
+		Location: &model.LocationInCellar{Name: "old"}, Format: &model.BeerFormat{Package: "old"},
+	}
+	drinkBefore := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	cellarUntil := time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC)
+	dateAdded := time.Date(2025, 3, 4, 0, 0, 0, 0, time.UTC)
+
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(existing, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagGift}).Return(map[string]model.Tag{}, nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, existing).Return(existing, nil) // the handler mutates the entry in place
+
+	_, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{
+		CellarEntryId: 10,
+		LocationId:    pointy.Uint64(4),
+		FormatId:      pointy.Uint64(2),
+		Vintage:       pointy.Uint64(2019),
+		Quantity:      pointy.Int64(5),
+		HadBefore:     pointy.Bool(true),
+		Special:       pointy.Bool(true),
+		DrinkBefore:   timestamppb.New(drinkBefore),
+		CellarUntil:   timestamppb.New(cellarUntil),
+		DateAdded:     timestamppb.New(dateAdded),
+		Tags:          &apiv1.Tags{Tags: []string{tagGift}},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(existing.LocationID)
+	suite.Equal(uint(4), *existing.LocationID)
+	suite.Nil(existing.Location, "stale preloaded location must be cleared")
+	suite.Require().NotNil(existing.FormatID)
+	suite.Equal(uint(2), *existing.FormatID)
+	suite.Nil(existing.Format, "stale preloaded format must be cleared")
+	suite.Require().NotNil(existing.Vintage)
+	suite.Equal(uint64(2019), *existing.Vintage)
+	suite.Equal(int64(5), existing.Quantity)
+	suite.True(existing.HadBefore)
+	suite.True(existing.Special)
+	suite.True(existing.DrinkBefore.Equal(drinkBefore))
+	suite.True(existing.CellarUntil.Equal(cellarUntil))
+	suite.True(existing.DateAdded.Equal(dateAdded))
+	suite.Require().Len(existing.Tags, 1)
+	suite.Equal(tagGift, existing.Tags[0].Tag)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_UnsetFieldsAreLeftAlone() {
+	ctx := ctxWithUser(1)
+	vintage := uint64(2018)
+	existing := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 3, Vintage: &vintage, HadBefore: true, Special: true}
+
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(existing, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, existing).Return(existing, nil)
+
+	_, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10}))
+
+	suite.Require().NoError(err)
+	suite.Equal(int64(3), existing.Quantity)
+	suite.Equal(uint64(2018), *existing.Vintage)
+	suite.True(existing.HadBefore)
+	suite.True(existing.Special)
+	suite.Nil(existing.Tags)
+}
+
+func (suite *CellarTestSuite) TestRecommendBeer_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().FindBeerRecommendations(ctx, uint64(1), mock.Anything).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.RecommendBeer(ctx, connect.NewRequest(&apiv1.RecommendBeerRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_BreweriesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, errors.New("breweries failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "breweries failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_StylesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarStyles(ctx, uint64(1)).Return(nil, errors.New("styles failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "styles failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_RangesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarStyles(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarRecommendationRanges(ctx, uint64(1)).Return(nil, errors.New("ranges failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "ranges failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAdventCalendar_RepositoryErrors() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil).Times(3)
+	suite.cellarRepo.EXPECT().UpdateAdventCalendar(ctx, uint64(1), uint64(2), mock.Anything).Return(errors.New("update failed"))
+	suite.cellarRepo.EXPECT().DeleteAdventCalendar(ctx, uint64(1), uint64(2)).Return(errors.New("delete failed"))
+	suite.cellarRepo.EXPECT().GetAdventCalendarByID(ctx, uint64(1), uint64(2)).Return(nil, errors.New("get failed"))
+
+	_, err := suite.service.UpdateAdventCalendar(ctx, connect.NewRequest(&apiv1.UpdateAdventCalendarRequest{CellarId: 1, Id: 2, RevealDay: timestamppb.Now()}))
+	suite.Require().ErrorContains(err, "update failed")
+
+	_, err = suite.service.DeleteAdventCalendar(ctx, connect.NewRequest(&apiv1.DeleteAdventCalendarRequest{CellarId: 1, Id: 2}))
+	suite.Require().ErrorContains(err, "delete failed")
+
+	_, err = suite.service.GetAdventCalendar(ctx, connect.NewRequest(&apiv1.GetAdventCalendarRequest{CellarId: 1, Criteria: &apiv1.GetAdventCalendarRequest_Id{Id: 2}}))
+	suite.Require().ErrorContains(err, "get failed")
+}
+
+func (suite *CellarTestSuite) TestRegenerateAdventCalendarDay_MissingDay() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetAdventCalendarByID(ctx, uint64(1), uint64(1)).Return(&model.AdventCalendar{Model: gorm.Model{ID: 1}}, nil)
+
+	result, err := suite.service.RegenerateAdventCalendarDay(ctx, connect.NewRequest(&apiv1.RegenerateAdventCalendarDayRequest{CellarId: 1, AdventCalendarId: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrInvalidInput)
+	suite.Nil(result)
+}
