@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/bufbuild/connect-go"
 	"go.uber.org/zap"
@@ -73,6 +74,10 @@ func (b *BeerServer) FindBeer(_ context.Context, request *connect.Request[api.Fi
 }
 
 func (b *BeerServer) AddBeer(ctx context.Context, request *connect.Request[api.AddBeerRequest]) (*connect.Response[api.AddBeerResponse], error) {
+	if request.Msg.GetBeer() == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: beer is required", ErrInvalidInput))
+	}
+
 	beer := grpc.BeerToModel(request.Msg.GetBeer())
 
 	if request.Msg.GetBeer().GetBrewery() != nil {
