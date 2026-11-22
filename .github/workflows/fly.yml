@@ -31,7 +31,7 @@ jobs:
 
       - uses: brokeyourbike/go-mockery-action@v0.2.0
         with:
-          mockery-version: 3.5.1
+          mockery-version: 3.9.1
 
       - name: Generate mocks
         run: go generate ./...
