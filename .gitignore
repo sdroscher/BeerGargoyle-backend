@@ -47,3 +47,5 @@ cover.out
 
 dart/
 dart-client/
+# Superpowers brainstorming companion
+.superpowers/
