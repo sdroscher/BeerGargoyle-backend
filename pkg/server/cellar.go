@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -28,6 +29,8 @@ type CellarServer struct {
 	cellarRepository   repository.CellarRepository
 	beerRepository     beerRepository
 	activityRepository repository.ActivityRepository
+	// wg tracks background advent calendar refills so tests (and a future graceful shutdown) can wait for them.
+	wg sync.WaitGroup
 }
 
 const (
@@ -47,6 +50,11 @@ type beerRepository interface {
 
 func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, activityRepo repository.ActivityRepository, logger *zap.Logger) *CellarServer {
 	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, activityRepository: activityRepo, logger: logger}
+}
+
+// Wait blocks until all background work started by this server (advent calendar refills) has finished.
+func (c *CellarServer) Wait() {
+	c.wg.Wait()
 }
 
 // requireCellarOwner fetches the cellar and returns CodePermissionDenied if the

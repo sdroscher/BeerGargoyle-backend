@@ -116,11 +116,13 @@ func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(entry, nil)
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.cellarRepo.EXPECT().ConsumeEntry(ctx, entryAfterDecrement, activityMatcher).Return(activity, nil)
+	suite.expectRefillLookup()
 
 	resp, err := suite.service.RecordConsumption(ctx, connect.NewRequest(&apiv1.RecordConsumptionRequest{
 		CellarEntryId: 10,
 		Quantity:      1,
 	}))
+	suite.service.Wait()
 
 	suite.Require().NoError(err)
 	suite.NotNil(resp.Msg.Consumption)
