@@ -48,7 +48,7 @@ func (suite *BeerTestSuite) TestAddBeer_AddsBeer() {
 func (suite *BeerTestSuite) TestFindBreweryByExternalSource_FindsBrewery() {
 	suite.mock.ExpectQuery(`^SELECT (.+) FROM "breweries" WHERE \(external_id \= \$1 AND external_source \= \$2\) (.+)`).
 		WithArgs(256500, "untappd-web", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(uint(1), "Paronomastic Brewing"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName}).AddRow(uint(1), "Paronomastic Brewing"))
 
 	brewery, err := suite.repository.FindBreweryByExternalSource(context.Background(), 256500, "untappd-web")
 	suite.Require().NoError(err)
@@ -111,7 +111,7 @@ func (suite *BeerTestSuite) TestAddBeerStyle_DefaultsToOTHERWhenNotProvided() {
 	// When ID is 0, it means there was a conflict and we need to fetch the existing record
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_styles" WHERE name = $1 AND "beer_styles"."deleted_at" IS NULL ORDER BY "beer_styles"."id" LIMIT $2`)).
 		WithArgs("Custom Style", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "bjcp_style_id"}).AddRow(uint(3), "Custom Style", "OTHER"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName, "bjcp_style_id"}).AddRow(uint(3), "Custom Style", "OTHER"))
 
 	beerStyle := model.BeerStyle{Name: "Custom Style", BJCPStyleID: ""}
 	style, err := suite.repository.AddBeerStyle(context.Background(), beerStyle)

@@ -42,7 +42,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_Success() {
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
 		Quantity: 4,
-		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: testBeerName},
 		Format:   format,
 	}
 	entryID := uint(10)
@@ -89,7 +89,7 @@ func (suite *ActivityTestSuite) TestRecordConsumption_LastBottle() {
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
 		Quantity: 1,
-		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: testBeerName},
 	}
 	entryID := uint(10)
 	activity := &model.Activity{
@@ -136,7 +136,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Basic() {
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
 		Quantity: 3,
-		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: testBeerName},
 	}
 	activities := []*model.Activity{
 		{
@@ -170,7 +170,7 @@ func (suite *ActivityTestSuite) TestGetActivityFeed_Pagination() {
 	entry := &model.CellarEntry{
 		Model:    gorm.Model{ID: 10},
 		CellarID: 1,
-		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF"},
+		Beer:     model.Beer{Model: gorm.Model{ID: 5}, Name: testBeerName},
 	}
 
 	activities := make([]*model.Activity, 0, 5)
@@ -265,7 +265,7 @@ func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
 			{Name: "Dark Beer", Count: 10},
 		},
 		TopBreweries: []model.NameCount{
-			{Name: "Boombox", Count: 20},
+			{Name: testBreweryName, Count: 20},
 		},
 		ByMonth: []model.MonthlyCount{
 			{Month: 1, Count: 3},
@@ -336,7 +336,7 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_Success() {
 	ctx := ctxWithUser(1)
 
 	extID := uint64(14534)
-	beer := model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF", ExternalID: &extID, ExternalSource: new("untappd"), Brewery: model.Brewery{Name: "Boombox"}}
+	beer := model.Beer{Model: gorm.Model{ID: 5}, Name: testBeerName, ExternalID: &extID, ExternalSource: new("untappd"), Brewery: model.Brewery{Name: testBreweryName}}
 	entryID := uint(10)
 	entries := []*model.CellarEntry{
 		{Model: gorm.Model{ID: entryID}, CellarID: 1, BeerID: 5, Beer: beer},
@@ -344,7 +344,7 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_Success() {
 
 	state := &model.UntappdImportState{CellarID: 1, LastImportAt: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)}
 
-	csvData := untappdCSVHeader + "\n" + untappdCSVRow("Juicy AF", "Boombox", "Can", "2024-03-01 12:00:00", "9501642", "14534")
+	csvData := untappdCSVHeader + "\n" + untappdCSVRow(testBeerName, testBreweryName, "Can", "2024-03-01 12:00:00", "9501642", "14534")
 
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
 	suite.activityRepo.EXPECT().GetOrInitImportState(ctx, uint(1)).Return(state, nil)
@@ -419,7 +419,7 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_EmptyCSV() {
 func (suite *ActivityTestSuite) TestImportUntappdCheckins_MatchesByNameFallback() {
 	ctx := ctxWithUser(1)
 
-	beer := model.Beer{Model: gorm.Model{ID: 7}, Name: "Juicy AF", Brewery: model.Brewery{Name: "Boombox"}}
+	beer := model.Beer{Model: gorm.Model{ID: 7}, Name: testBeerName, Brewery: model.Brewery{Name: testBreweryName}}
 	entries := []*model.CellarEntry{
 		{Model: gorm.Model{ID: 20}, CellarID: 1, BeerID: 7, Beer: beer},
 	}
@@ -427,7 +427,7 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_MatchesByNameFallback(
 	state := &model.UntappdImportState{CellarID: 1, LastImportAt: time.Time{}}
 
 	// Row has bid=0 so will fall back to name matching
-	csvData := untappdCSVHeader + "\n" + untappdCSVRow("Juicy AF", "Boombox", "Bottle", "2024-03-01 12:00:00", "9999", "0")
+	csvData := untappdCSVHeader + "\n" + untappdCSVRow(testBeerName, testBreweryName, "Bottle", "2024-03-01 12:00:00", "9999", "0")
 
 	var capturedActivities []*model.Activity
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)

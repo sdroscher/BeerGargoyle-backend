@@ -76,8 +76,8 @@ func (suite *CellarTestSuite) TestCreateAdventCalendar_ErrorMissingFilters() {
 	ctx := ctxWithUser(1)
 	request := &apiv1.CreateAdventCalendarRequest{
 		CellarId:    1,
-		Name:        "Test",
-		Description: "Test",
+		Name:        testCalendarName,
+		Description: testCalendarName,
 		StartDate:   timestamppb.Now(),
 		EndDate:     timestamppb.New(time.Now().AddDate(0, 0, 1)),
 		Filters:     nil,
@@ -96,8 +96,8 @@ func (suite *CellarTestSuite) TestCreateAdventCalendar_NoCandidatesError() {
 	filter2 := &apiv1.CellarFilter{MinimumAbv: pointy.Float64(9)}
 	request := &apiv1.CreateAdventCalendarRequest{
 		CellarId:    1,
-		Name:        "Test",
-		Description: "Test",
+		Name:        testCalendarName,
+		Description: testCalendarName,
 		StartDate:   timestamppb.Now(),
 		EndDate:     timestamppb.New(time.Now().AddDate(0, 0, 1)),
 		Filters:     []*apiv1.CellarFilter{filter1, filter2},
@@ -118,8 +118,8 @@ func (suite *CellarTestSuite) TestCreateAdventCalendar_NoUniqueEntriesError() {
 	filter2 := &apiv1.CellarFilter{MinimumAbv: pointy.Float64(9)}
 	request := &apiv1.CreateAdventCalendarRequest{
 		CellarId:    1,
-		Name:        "Test",
-		Description: "Test",
+		Name:        testCalendarName,
+		Description: testCalendarName,
 		StartDate:   timestamppb.Now(),
 		EndDate:     timestamppb.New(time.Now().AddDate(0, 0, 1)),
 		Filters:     []*apiv1.CellarFilter{filter1, filter2},
@@ -142,8 +142,8 @@ func (suite *CellarTestSuite) TestCreateAdventCalendar_Success() {
 	filter2 := &apiv1.CellarFilter{MinimumAbv: pointy.Float64(9)}
 	request := &apiv1.CreateAdventCalendarRequest{
 		CellarId:    1,
-		Name:        "Test",
-		Description: "Test",
+		Name:        testCalendarName,
+		Description: testCalendarName,
 		StartDate:   timestamppb.Now(),
 		EndDate:     timestamppb.New(time.Now().AddDate(0, 0, 1)),
 		Filters:     []*apiv1.CellarFilter{filter1, filter2},
@@ -464,7 +464,7 @@ func (suite *CellarTestSuite) TestGetAdventCalendar_ByID() {
 		Model:       gorm.Model{ID: 1},
 		CellarID:    1,
 		Name:        "Test Calendar",
-		Description: "A test advent calendar",
+		Description: testCalendarDescription,
 		StartDate:   time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:     time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC),
 	}
@@ -493,7 +493,7 @@ func (suite *CellarTestSuite) TestGetAdventCalendar_ByDate() {
 		Model:       gorm.Model{ID: 1},
 		CellarID:    1,
 		Name:        "Test Calendar",
-		Description: "A test advent calendar",
+		Description: testCalendarDescription,
 		StartDate:   time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:     time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC),
 	}
@@ -520,7 +520,7 @@ func (suite *CellarTestSuite) TestGetAdventCalendar_ByName() {
 		Model:       gorm.Model{ID: 1},
 		CellarID:    1,
 		Name:        "Christmas Calendar",
-		Description: "A test advent calendar",
+		Description: testCalendarDescription,
 		StartDate:   time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:     time.Date(2023, 12, 25, 0, 0, 0, 0, time.UTC),
 	}
