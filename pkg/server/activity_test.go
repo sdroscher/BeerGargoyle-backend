@@ -274,7 +274,7 @@ func (suite *ActivityTestSuite) TestGetYearInReview_ExplicitYear() {
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
-	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), 2024).Return(yir, nil)
+	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), 2024, time.UTC).Return(yir, nil)
 
 	resp, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
 		CellarId: 1,
@@ -300,7 +300,7 @@ func (suite *ActivityTestSuite) TestGetYearInReview_DefaultsToCurrentYear() {
 	currentYear := time.Now().UTC().Year()
 
 	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
-	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), currentYear).
+	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), currentYear, time.UTC).
 		Return(&model.YearInReview{Year: currentYear, CellarID: 1}, nil)
 
 	resp, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
@@ -309,6 +309,39 @@ func (suite *ActivityTestSuite) TestGetYearInReview_DefaultsToCurrentYear() {
 
 	suite.Require().NoError(err)
 	suite.Greater(resp.Msg.YearInReview.Year, int32(2000))
+}
+
+func (suite *ActivityTestSuite) TestGetYearInReview_InvalidTimeZone() {
+	for _, zone := range []string{"Not/AZone", "Local"} {
+		ctx := ctxWithUser(1)
+
+		suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil).Once()
+
+		_, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
+			CellarId: 1,
+			TimeZone: zone,
+		}))
+
+		suite.Require().Error(err, zone)
+		suite.Equal(connect.CodeInvalidArgument, connect.CodeOf(err), zone)
+	}
+}
+
+func (suite *ActivityTestSuite) TestGetYearInReview_PassesTimeZone() {
+	ctx := ctxWithUser(1)
+
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.activityRepo.EXPECT().GetYearInReview(ctx, uint(1), 2024, mock.MatchedBy(func(loc *time.Location) bool {
+		return loc.String() == "America/Vancouver"
+	})).Return(&model.YearInReview{Year: 2024, CellarID: 1}, nil)
+
+	_, err := suite.service.GetYearInReview(ctx, connect.NewRequest(&apiv1.GetYearInReviewRequest{
+		CellarId: 1,
+		Year:     2024,
+		TimeZone: "America/Vancouver",
+	}))
+
+	suite.Require().NoError(err)
 }
 
 // ── ImportUntappdCheckins ─────────────────────────────────────────────────────

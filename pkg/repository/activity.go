@@ -19,7 +19,7 @@ type ActivityRepository interface {
 	GetFeed(ctx context.Context, cellarID uint, from, until *time.Time, limit, offset int) ([]*model.Activity, int64, error)
 
 	// GetYearInReview returns aggregate stats for a cellar for a given calendar year.
-	GetYearInReview(ctx context.Context, cellarID uint, year int) (*model.YearInReview, error)
+	GetYearInReview(ctx context.Context, cellarID uint, year int, loc *time.Location) (*model.YearInReview, error)
 
 	// GetUntappdCheckinIDsForCellar returns the set of Untappd checkin IDs already stored for a cellar.
 	GetUntappdCheckinIDsForCellar(ctx context.Context, cellarID uint) (map[uint64]struct{}, error)
@@ -95,8 +95,8 @@ func (r *Repository) feedQuery(ctx context.Context, cellarID uint, from, until *
 
 const topNLimit = 5
 
-func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year int) (*model.YearInReview, error) {
-	yearStart := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year int, loc *time.Location) (*model.YearInReview, error) {
+	yearStart := time.Date(year, 1, 1, 0, 0, 0, 0, loc)
 	yearEnd := yearStart.AddDate(1, 0, 0)
 
 	result := &model.YearInReview{Year: year, CellarID: cellarID}
@@ -126,7 +126,7 @@ func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year in
 		return nil, err
 	}
 
-	err = r.scanByMonth(ctx, result, cellarID, yearStart, yearEnd)
+	err = r.scanByMonth(ctx, result, cellarID, yearStart, yearEnd, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -257,9 +257,9 @@ func (r *Repository) scanTopBreweries(ctx context.Context, result *model.YearInR
 	return err
 }
 
-func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time) error {
+func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time, loc *time.Location) error {
 	err := r.DB.WithContext(ctx).Raw(`
-		SELECT EXTRACT(MONTH FROM occurred_at)::int AS month, SUM(quantity) AS count
+		SELECT EXTRACT(MONTH FROM occurred_at AT TIME ZONE ?)::int AS month, SUM(quantity) AS count
 		FROM activities
 		WHERE cellar_id     = ?
 		  AND activity_type = ?
@@ -268,7 +268,7 @@ func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview
 		  AND deleted_at   IS NULL
 		GROUP BY month
 		ORDER BY month
-	`, cellarID, model.ActivityTypeBeerConsumed, yearStart, yearEnd).
+	`, loc.String(), cellarID, model.ActivityTypeBeerConsumed, yearStart, yearEnd).
 		Scan(&result.ByMonth).Error
 
 	return err

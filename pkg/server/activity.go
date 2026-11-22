@@ -275,6 +275,9 @@ func maxCreatedAt(rows []untappdcsv.Row, afterTime time.Time) time.Time {
 	return latest
 }
 
+// localZoneName is the name time.LoadLocation gives the server-local zone, which clients must not send.
+const localZoneName = "Local"
+
 // GetYearInReview returns aggregate consumption and acquisition stats for a cellar year.
 func (c *CellarServer) GetYearInReview(ctx context.Context, request *connect.Request[api.GetYearInReviewRequest]) (*connect.Response[api.GetYearInReviewResponse], error) {
 	cellarID := uint(request.Msg.GetCellarId())
@@ -284,12 +287,17 @@ func (c *CellarServer) GetYearInReview(ctx context.Context, request *connect.Req
 		return nil, err
 	}
 
-	year := int(request.Msg.GetYear())
-	if year == 0 {
-		year = time.Now().UTC().Year()
+	loc, err := time.LoadLocation(request.Msg.GetTimeZone())
+	if err != nil || loc.String() == localZoneName {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%w: time_zone %q must be an IANA name", ErrInvalidInput, request.Msg.GetTimeZone()))
 	}
 
-	yir, err := c.activityRepository.GetYearInReview(ctx, cellarID, year)
+	year := int(request.Msg.GetYear())
+	if year == 0 {
+		year = time.Now().In(loc).Year()
+	}
+
+	yir, err := c.activityRepository.GetYearInReview(ctx, cellarID, year, loc)
 	if err != nil {
 		return nil, err
 	}
