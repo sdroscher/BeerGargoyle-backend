@@ -75,6 +75,11 @@ func (c *CellarServer) RecordConsumption(ctx context.Context, request *connect.R
 		return nil, err
 	}
 
+	if entry.Quantity == 0 {
+		// Future advent calendar days scheduled with this entry now point at a beer that is gone.
+		c.startAdventRefill(ctx, uint64(entry.CellarID), uint64(entry.ID))
+	}
+
 	return connect.NewResponse(&api.RecordConsumptionResponse{
 		Consumption: grpcconv.ActivityEventFromModel(created, entry),
 	}), nil

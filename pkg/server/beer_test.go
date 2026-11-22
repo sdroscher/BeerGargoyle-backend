@@ -169,7 +169,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_LooksUpExistingBreweryByExternalSo
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
 		Name:    hazyIPA,
-		Brewery: &apiv1.Brewery{ExternalId: pointy.Uint64(55), ExternalSource: pointy.String("untappd_web")},
+		Brewery: &apiv1.Brewery{ExternalId: pointy.Uint64(55), ExternalSource: new("untappd_web")},
 	}))
 
 	suite.Require().NoError(err)
@@ -180,7 +180,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_NewBreweryIsEnriched() {
 	suite.beerRepo.EXPECT().FindBreweryByExternalSource(ctx, uint64(55), fakeIntegration).Return(nil, repository.ErrBreweryNotFound)
 	suite.integration.EXPECT().GetBreweryDetails(uint64(55)).Return(model.Brewery{
 		Description:    "A fine brewery",
-		ExternalRating: pointy.Float64(4.1),
+		ExternalRating: new(4.1),
 		Address:        model.Address{Locality: "Vancouver"},
 		ImageURL:       "http://img/brewery.png",
 	}, nil)
@@ -195,7 +195,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_NewBreweryIsEnriched() {
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
 		Name:    hazyIPA,
-		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: pointy.String(fakeIntegration)},
+		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: new(fakeIntegration)},
 	}))
 
 	suite.Require().NoError(err)
@@ -211,7 +211,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_BreweryLookupErrorStillSaves() {
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
 		Name:    hazyIPA,
-		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: pointy.String("other")},
+		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: new("other")},
 	}))
 
 	suite.Require().NoError(err)
@@ -228,7 +228,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_BreweryEnrichmentFailureStillSaves
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
 		Name:    hazyIPA,
-		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: pointy.String(fakeIntegration)},
+		Brewery: &apiv1.Brewery{Name: breweryA, ExternalId: pointy.Uint64(55), ExternalSource: new(fakeIntegration)},
 	}))
 
 	suite.Require().NoError(err)
@@ -280,7 +280,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_FetchesMissingDescription() {
 	})).Return(&model.Beer{Name: hazyIPA, Description: "Juicy and hazy"}, nil)
 
 	result, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
-		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: pointy.String(fakeIntegration),
+		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: new(fakeIntegration),
 	}))
 
 	suite.Require().NoError(err)
@@ -294,7 +294,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_ExistingDescriptionNotOverwritten(
 	})).Return(&model.Beer{Name: hazyIPA}, nil)
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
-		Name: hazyIPA, Description: "Mine", ExternalId: pointy.Uint64(8), ExternalSource: pointy.String(fakeIntegration),
+		Name: hazyIPA, Description: "Mine", ExternalId: pointy.Uint64(8), ExternalSource: new(fakeIntegration),
 	}))
 
 	suite.Require().NoError(err) // no GetBeerDescription expectation: the mock fails the test if it is called
@@ -308,7 +308,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_DescriptionFailureStillSaves() {
 	})).Return(&model.Beer{Name: hazyIPA}, nil)
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
-		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: pointy.String(fakeIntegration),
+		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: new(fakeIntegration),
 	}))
 
 	suite.Require().NoError(err)
@@ -320,7 +320,7 @@ func (suite *BeerServerTestSuite) TestAddBeer_UnknownSourceSkipsEnrichment() {
 	suite.beerRepo.EXPECT().AddBeer(ctx, mock.Anything).Return(&model.Beer{Name: hazyIPA}, nil)
 
 	_, err := suite.service.AddBeer(ctx, addBeerRequest(&apiv1.Beer{
-		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: pointy.String("typo"),
+		Name: hazyIPA, ExternalId: pointy.Uint64(8), ExternalSource: new("typo"),
 	}))
 
 	suite.Require().NoError(err)

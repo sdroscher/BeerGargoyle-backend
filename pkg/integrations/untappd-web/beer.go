@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gocolly/colly/v2"
-	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 
 	"droscher.com/BeerGargoyle/pkg/model"
@@ -55,26 +54,26 @@ func beerFromHit(hit algoliaBeerHit) model.Beer {
 		Name:           hit.BeerName,
 		ImageURL:       firstNonEmpty(hit.BeerLabelHD, hit.BeerLabel),
 		Style:          model.BeerStyle{Name: styleName(hit)},
-		ExternalSource: pointy.String(IntegrationName),
-		ExternalID:     pointy.Uint64(hit.BID),
+		ExternalSource: new(IntegrationName),
+		ExternalID:     new(hit.BID),
 		Brewery: model.Brewery{
 			Name:           hit.BreweryName,
 			ImageURL:       hit.BreweryLabel,
-			ExternalSource: pointy.String(IntegrationName),
-			ExternalID:     pointy.Uint64(hit.BreweryID),
+			ExternalSource: new(IntegrationName),
+			ExternalID:     new(hit.BreweryID),
 		},
 	}
 
 	if hit.BeerABV > 0 {
-		beer.ABV = pointy.Float64(hit.BeerABV)
+		beer.ABV = new(hit.BeerABV)
 	}
 
 	if hit.BeerIBU > 0 {
-		beer.IBU = pointy.Uint64(uint64(hit.BeerIBU))
+		beer.IBU = new(uint64(hit.BeerIBU))
 	}
 
 	if hit.RatingScore > 0 {
-		beer.ExternalRating = pointy.Float64(hit.RatingScore)
+		beer.ExternalRating = new(hit.RatingScore)
 	}
 
 	return beer

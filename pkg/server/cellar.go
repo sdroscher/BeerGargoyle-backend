@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
 	"github.com/google/uuid"
-	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
@@ -29,6 +29,8 @@ type CellarServer struct {
 	cellarRepository   repository.CellarRepository
 	beerRepository     beerRepository
 	activityRepository repository.ActivityRepository
+	// wg tracks background advent calendar refills so tests (and a future graceful shutdown) can wait for them.
+	wg sync.WaitGroup
 }
 
 const (
@@ -48,6 +50,11 @@ type beerRepository interface {
 
 func NewCellarServer(cellarRepo repository.CellarRepository, beerRepo beerRepository, activityRepo repository.ActivityRepository, logger *zap.Logger) *CellarServer {
 	return &CellarServer{cellarRepository: cellarRepo, beerRepository: beerRepo, activityRepository: activityRepo, logger: logger}
+}
+
+// Wait blocks until all background work started by this server (advent calendar refills) has finished.
+func (c *CellarServer) Wait() {
+	c.wg.Wait()
 }
 
 // requireCellarOwner fetches the cellar and returns CodePermissionDenied if the
@@ -96,7 +103,7 @@ func (c *CellarServer) AddCellar(ctx context.Context, request *connect.Request[a
 	}
 
 	if user.UntappdUserName != nil {
-		owner.UntappedUsername = pointy.String(*user.UntappdUserName)
+		owner.UntappedUsername = new(*user.UntappdUserName)
 	}
 
 	cellar, err := c.cellarRepository.AddCellar(ctx, request.Msg.GetName(), request.Msg.GetDescription(), request.Msg.GetLocations(), *user)
@@ -165,7 +172,7 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	}
 
 	if request.Msg.GetLocationId() != 0 {
-		beer.LocationID = pointy.Uint(uint(request.Msg.GetLocationId()))
+		beer.LocationID = new(uint(request.Msg.GetLocationId()))
 	}
 
 	if request.Msg.GetDrinkBefore() != nil {
@@ -179,11 +186,11 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	}
 
 	if request.Msg.GetFormatId() != 0 {
-		beer.FormatID = pointy.Uint(uint(request.Msg.GetFormatId()))
+		beer.FormatID = new(uint(request.Msg.GetFormatId()))
 	}
 
 	if request.Msg.GetVintage() != 0 {
-		beer.Vintage = pointy.Uint64(request.Msg.GetVintage())
+		beer.Vintage = new(request.Msg.GetVintage())
 	}
 
 	if request.Msg.GetDateAdded() != nil {
@@ -320,12 +327,12 @@ func (c *CellarServer) UpdateBeer(ctx context.Context, request *connect.Request[
 
 func (c *CellarServer) updateCellarEntry(ctx context.Context, request *connect.Request[api.UpdateBeerRequest], cellarEntry *model.CellarEntry) {
 	if request.Msg.GetLocationId() != 0 {
-		cellarEntry.LocationID = pointy.Uint(uint(request.Msg.GetLocationId()))
+		cellarEntry.LocationID = new(uint(request.Msg.GetLocationId()))
 		cellarEntry.Location = nil
 	}
 
 	if request.Msg.GetVintage() != 0 {
-		cellarEntry.Vintage = pointy.Uint64(request.Msg.GetVintage())
+		cellarEntry.Vintage = new(request.Msg.GetVintage())
 	}
 
 	if request.Msg.Quantity != nil {
@@ -333,7 +340,7 @@ func (c *CellarServer) updateCellarEntry(ctx context.Context, request *connect.R
 	}
 
 	if request.Msg.GetFormatId() != 0 {
-		cellarEntry.FormatID = pointy.Uint(uint(request.Msg.GetFormatId()))
+		cellarEntry.FormatID = new(uint(request.Msg.GetFormatId()))
 		cellarEntry.Format = nil
 	}
 
@@ -633,23 +640,7 @@ func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request 
 
 	day := truncateToDay(request.Msg.GetDay().AsTime())
 
-	filter, err := c.cellarRepository.GetAdventCalendarFilter(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day)
-	if err != nil {
-		return nil, err
-	}
-
-	beerMap := make(map[uint64]struct{}, len(adventCalendar.Beers))
-
-	for _, beer := range adventCalendar.Beers {
-		beerMap[uint64(beer.CellarEntryID)] = struct{}{}
-	}
-
-	recommendation, err := c.uniqueRecommendation(ctx, request.Msg.GetCellarId(), grpc.CellarFilterFromModel(filter), beerMap)
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.cellarRepository.UpdateAdventCalendarEntry(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day, recommendation.GetCellarEntryId())
+	recommendation, err := c.regenerateAdventDay(ctx, request.Msg.GetCellarId(), adventCalendar, day)
 	if err != nil {
 		return nil, err
 	}
@@ -661,4 +652,34 @@ func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request 
 	}
 
 	return connect.NewResponse(&api.RegenerateAdventCalendarDayResponse{Beer: &beer}), nil
+}
+
+// regenerateAdventDay picks a replacement beer for one day of an advent calendar, using the filter
+// stored for that day and avoiding every beer already in the calendar, and persists it.
+// day must already be truncated to the day and calendar must have its Beers loaded.
+func (c *CellarServer) regenerateAdventDay(ctx context.Context, cellarID uint64, calendar *model.AdventCalendar, day time.Time) (*api.CellarBeer, error) {
+	calendarID := uint64(calendar.ID)
+
+	filter, err := c.cellarRepository.GetAdventCalendarFilter(ctx, cellarID, calendarID, day)
+	if err != nil {
+		return nil, err
+	}
+
+	beerMap := make(map[uint64]struct{}, len(calendar.Beers))
+
+	for _, beer := range calendar.Beers {
+		beerMap[uint64(beer.CellarEntryID)] = struct{}{}
+	}
+
+	recommendation, err := c.uniqueRecommendation(ctx, cellarID, grpc.CellarFilterFromModel(filter), beerMap)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.cellarRepository.UpdateAdventCalendarEntry(ctx, cellarID, calendarID, day, recommendation.GetCellarEntryId())
+	if err != nil {
+		return nil, err
+	}
+
+	return recommendation, nil
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gocolly/colly/v2"
-	"go.openly.dev/pointy"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 
@@ -60,8 +59,8 @@ func breweryFromHit(hit algoliaBreweryHit) model.Brewery {
 			Region:        stringPointer(hit.BreweryState),
 			StreetAddress: stringPointer(hit.BreweryAddress),
 		},
-		ExternalSource: pointy.String(IntegrationName),
-		ExternalID:     pointy.Uint64(hit.BreweryID),
+		ExternalSource: new(IntegrationName),
+		ExternalID:     new(hit.BreweryID),
 	}
 }
 
@@ -95,8 +94,8 @@ func (u *UntappedWebIntegration) getBreweryFromURI(uri string, collector *colly.
 				StreetAddress: stringPointer(breweryJSON.Address.StreetAddress),
 			},
 			ImageURL:       breweryJSON.Image.ContentURL,
-			ExternalSource: pointy.String(IntegrationName),
-			ExternalRating: pointy.Float64(breweryJSON.AggregateRating.RatingValue),
+			ExternalSource: new(IntegrationName),
+			ExternalRating: new(breweryJSON.AggregateRating.RatingValue),
 		}
 	})
 
@@ -111,7 +110,7 @@ func (u *UntappedWebIntegration) getBreweryFromURI(uri string, collector *colly.
 	multierr.AppendInto(&errs, collector.Visit("https://untappd.com/"+uri))
 
 	if breweryID != 0 {
-		brewery.ExternalID = pointy.Uint64(breweryID)
+		brewery.ExternalID = new(breweryID)
 	}
 
 	return brewery, errs

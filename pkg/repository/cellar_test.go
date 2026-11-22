@@ -77,13 +77,13 @@ func (suite *CellarTestSuite) TestGetAllCellars_GetCellars() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellars"."id","cellars"."created_at","cellars"."updated_at","cellars"."deleted_at","cellars"."name","cellars"."description","cellars"."owner_id","Owner"."id" AS "Owner__id","Owner"."created_at" AS "Owner__created_at","Owner"."updated_at" AS "Owner__updated_at","Owner"."deleted_at" AS "Owner__deleted_at","Owner"."uuid" AS "Owner__uuid","Owner"."username" AS "Owner__username","Owner"."first_name" AS "Owner__first_name","Owner"."last_name" AS "Owner__last_name","Owner"."email" AS "Owner__email","Owner"."untappd_user_name" AS "Owner__untappd_user_name" FROM "cellars" LEFT JOIN "users" "Owner" ON "cellars"."owner_id" = "Owner"."id" AND "Owner"."deleted_at" IS NULL WHERE owner_id = $1 AND "cellars"."deleted_at" IS NULL`)).
 		WithArgs(100).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "description", "owner_id", "Owner__id", "Owner__username"}).
+			sqlmock.NewRows([]string{"id", columnName, columnDescription, columnOwnerIDFK, columnOwnerID, columnOwnerUsername}).
 				AddRow(1, "my cellar", "my cellar description", 100, 100, "testuser"))
 
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "location_in_cellars" WHERE "location_in_cellars"."cellar_id" = $1 AND "location_in_cellars"."deleted_at" IS NULL`)).
 		WithArgs(1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "cellar_id"}).
+			sqlmock.NewRows([]string{"id", columnName, columnCellarID}).
 				AddRow(1, "Loc A", 1).
 				AddRow(2, "Loc B", 1))
 
@@ -103,13 +103,13 @@ func (suite *CellarTestSuite) TestGetCellarById_GetsCellar() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellars"."id","cellars"."created_at","cellars"."updated_at","cellars"."deleted_at","cellars"."name","cellars"."description","cellars"."owner_id","Owner"."id" AS "Owner__id","Owner"."created_at" AS "Owner__created_at","Owner"."updated_at" AS "Owner__updated_at","Owner"."deleted_at" AS "Owner__deleted_at","Owner"."uuid" AS "Owner__uuid","Owner"."username" AS "Owner__username","Owner"."first_name" AS "Owner__first_name","Owner"."last_name" AS "Owner__last_name","Owner"."email" AS "Owner__email","Owner"."untappd_user_name" AS "Owner__untappd_user_name" FROM "cellars" LEFT JOIN "users" "Owner" ON "cellars"."owner_id" = "Owner"."id" AND "Owner"."deleted_at" IS NULL WHERE "cellars"."id" = $1 AND "cellars"."deleted_at" IS NULL ORDER BY "cellars"."id" LIMIT $2`)).
 		WithArgs(100, 1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "description", "owner_id", "Owner__id", "Owner__username"}).
+			sqlmock.NewRows([]string{"id", columnName, columnDescription, columnOwnerIDFK, columnOwnerID, columnOwnerUsername}).
 				AddRow(1, "my cellar", "my cellar description", 100, 100, "testuser"))
 
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "location_in_cellars" WHERE "location_in_cellars"."cellar_id" = $1 AND "location_in_cellars"."deleted_at" IS NULL`)).
 		WithArgs(1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "cellar_id"}).
+			sqlmock.NewRows([]string{"id", columnName, columnCellarID}).
 				AddRow(1, "Loc A", 1).
 				AddRow(2, "Loc B", 1))
 
@@ -129,19 +129,19 @@ func (suite *CellarTestSuite) TestGetCellarEntryByID_GetsCellarEntryWithAssociat
 	suite.mock.ExpectQuery(`SELECT (.+) FROM "cellar_entries" LEFT JOIN "beers" "Beer" ON "cellar_entries"\."beer_id" \= "Beer"\."id" AND "Beer"\."deleted_at" IS NULL LEFT JOIN "location_in_cellars" "Location" ON "cellar_entries"\."location_id" \= "Location"\."id" AND "Location"\."deleted_at" IS NULL LEFT JOIN "beer_formats" "Format" ON "cellar_entries"\."format_id" \= "Format"\."id" AND "Format"\."deleted_at" IS NULL WHERE "cellar_entries"\."id" \= \$1  (.+)`).
 		WithArgs(100, 1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "cellar_id", "Beer__name", "Location__name", "Format__package", "Format__size_metric"}).
+			sqlmock.NewRows([]string{"id", columnCellarID, columnBeerName, "Location__name", "Format__package", "Format__size_metric"}).
 				AddRow(100, 10, "Tasty Beer", "Shelf 1", "Can", "330"))
 
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellars"."id","cellars"."created_at","cellars"."updated_at","cellars"."deleted_at","cellars"."name","cellars"."description","cellars"."owner_id","Owner"."id" AS "Owner__id","Owner"."created_at" AS "Owner__created_at","Owner"."updated_at" AS "Owner__updated_at","Owner"."deleted_at" AS "Owner__deleted_at","Owner"."uuid" AS "Owner__uuid","Owner"."username" AS "Owner__username","Owner"."first_name" AS "Owner__first_name","Owner"."last_name" AS "Owner__last_name","Owner"."email" AS "Owner__email","Owner"."untappd_user_name" AS "Owner__untappd_user_name" FROM "cellars" LEFT JOIN "users" "Owner" ON "cellars"."owner_id" = "Owner"."id" AND "Owner"."deleted_at" IS NULL WHERE "cellars"."id" = $1 AND "cellars"."deleted_at" IS NULL ORDER BY "cellars"."id" LIMIT $2`)).
 		WithArgs(10, 1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "description", "owner_id", "Owner__id", "Owner__username"}).
+			sqlmock.NewRows([]string{"id", columnName, columnDescription, columnOwnerIDFK, columnOwnerID, columnOwnerUsername}).
 				AddRow(10, "Test Cellar", "my cellar description", 100, 100, "testuser"))
 
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "location_in_cellars" WHERE "location_in_cellars"."cellar_id" = $1 AND "location_in_cellars"."deleted_at" IS NULL`)).
 		WithArgs(10).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "name", "cellar_id"}).
+			sqlmock.NewRows([]string{"id", columnName, columnCellarID}).
 				AddRow(1, "Shelf 1", 10).
 				AddRow(2, "Shelf 2", 10))
 
@@ -339,7 +339,7 @@ func (suite *CellarTestSuite) TestGetCellarBeers_GetsBeers() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellar_entries"."id","cellar_entries"."created_at","cellar_entries"."updated_at","cellar_entries"."deleted_at","cellar_entries"."cellar_id","cellar_entries"."beer_id","cellar_entries"."vintage","cellar_entries"."quantity","cellar_entries"."location_id","cellar_entries"."format_id","cellar_entries"."had_before","cellar_entries"."date_added","cellar_entries"."drink_before","cellar_entries"."cellar_until","cellar_entries"."special","Beer"."id" AS "Beer__id","Beer"."created_at" AS "Beer__created_at","Beer"."updated_at" AS "Beer__updated_at","Beer"."deleted_at" AS "Beer__deleted_at","Beer"."name" AS "Beer__name","Beer"."description" AS "Beer__description","Beer"."image_url" AS "Beer__image_url","Beer"."brewery_id" AS "Beer__brewery_id","Beer"."style_id" AS "Beer__style_id","Beer"."abv" AS "Beer__abv","Beer"."ibu" AS "Beer__ibu","Beer"."external_id" AS "Beer__external_id","Beer"."external_source" AS "Beer__external_source","Beer"."external_rating" AS "Beer__external_rating","Location"."id" AS "Location__id","Location"."created_at" AS "Location__created_at","Location"."updated_at" AS "Location__updated_at","Location"."deleted_at" AS "Location__deleted_at","Location"."name" AS "Location__name","Location"."cellar_id" AS "Location__cellar_id","Format"."id" AS "Format__id","Format"."created_at" AS "Format__created_at","Format"."updated_at" AS "Format__updated_at","Format"."deleted_at" AS "Format__deleted_at","Format"."package" AS "Format__package","Format"."size_metric" AS "Format__size_metric","Format"."size_imperial" AS "Format__size_imperial","Cellar"."id" AS "Cellar__id","Cellar"."created_at" AS "Cellar__created_at","Cellar"."updated_at" AS "Cellar__updated_at","Cellar"."deleted_at" AS "Cellar__deleted_at","Cellar"."name" AS "Cellar__name","Cellar"."description" AS "Cellar__description","Cellar"."owner_id" AS "Cellar__owner_id" FROM "cellar_entries" LEFT JOIN "beers" "Beer" ON "cellar_entries"."beer_id" = "Beer"."id" AND "Beer"."deleted_at" IS NULL LEFT JOIN "location_in_cellars" "Location" ON "cellar_entries"."location_id" = "Location"."id" AND "Location"."deleted_at" IS NULL LEFT JOIN "beer_formats" "Format" ON "cellar_entries"."format_id" = "Format"."id" AND "Format"."deleted_at" IS NULL LEFT JOIN "cellars" "Cellar" ON "cellar_entries"."cellar_id" = "Cellar"."id" AND "Cellar"."deleted_at" IS NULL WHERE cellar_entries.cellar_id = $1 AND "cellar_entries"."deleted_at" IS NULL`)).
 		WithArgs(1).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "quantity", "Beer__name"}).
+			sqlmock.NewRows([]string{"id", columnQuantity, columnBeerName}).
 				AddRow(uint(10), 2, "Pannepot").
 				AddRow(uint(11), 1, "Pannepeut"))
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "cellar_entry_tags" WHERE "cellar_entry_tags"."cellar_entry_id" IN ($1,$2)`)).
@@ -359,7 +359,7 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FindsRecommendations()
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellar_entries"."id","cellar_entries"."created_at","cellar_entries"."updated_at","cellar_entries"."deleted_at","cellar_entries"."cellar_id","cellar_entries"."beer_id","cellar_entries"."vintage","cellar_entries"."quantity","cellar_entries"."location_id","cellar_entries"."format_id","cellar_entries"."had_before","cellar_entries"."date_added","cellar_entries"."drink_before","cellar_entries"."cellar_until","cellar_entries"."special","Beer"."id" AS "Beer__id","Beer"."created_at" AS "Beer__created_at","Beer"."updated_at" AS "Beer__updated_at","Beer"."deleted_at" AS "Beer__deleted_at","Beer"."name" AS "Beer__name","Beer"."description" AS "Beer__description","Beer"."image_url" AS "Beer__image_url","Beer"."brewery_id" AS "Beer__brewery_id","Beer"."style_id" AS "Beer__style_id","Beer"."abv" AS "Beer__abv","Beer"."ibu" AS "Beer__ibu","Beer"."external_id" AS "Beer__external_id","Beer"."external_source" AS "Beer__external_source","Beer"."external_rating" AS "Beer__external_rating","Location"."id" AS "Location__id","Location"."created_at" AS "Location__created_at","Location"."updated_at" AS "Location__updated_at","Location"."deleted_at" AS "Location__deleted_at","Location"."name" AS "Location__name","Location"."cellar_id" AS "Location__cellar_id","Format"."id" AS "Format__id","Format"."created_at" AS "Format__created_at","Format"."updated_at" AS "Format__updated_at","Format"."deleted_at" AS "Format__deleted_at","Format"."package" AS "Format__package","Format"."size_metric" AS "Format__size_metric","Format"."size_imperial" AS "Format__size_imperial","Cellar"."id" AS "Cellar__id","Cellar"."created_at" AS "Cellar__created_at","Cellar"."updated_at" AS "Cellar__updated_at","Cellar"."deleted_at" AS "Cellar__deleted_at","Cellar"."name" AS "Cellar__name","Cellar"."description" AS "Cellar__description","Cellar"."owner_id" AS "Cellar__owner_id","Beer__Style"."id" AS "Beer__Style__id","Beer__Style"."created_at" AS "Beer__Style__created_at","Beer__Style"."updated_at" AS "Beer__Style__updated_at","Beer__Style"."deleted_at" AS "Beer__Style__deleted_at","Beer__Style"."name" AS "Beer__Style__name","Beer__Style"."bjcp_style_id" AS "Beer__Style__bjcp_style_id","Beer__Style__BJCPStyle"."bjcp_id" AS "Beer__Style__BJCPStyle__bjcp_id","Beer__Style__BJCPStyle"."name" AS "Beer__Style__BJCPStyle__name","Beer__Style__BJCPStyle"."category_id" AS "Beer__Style__BJCPStyle__category_id","Beer__Style__BJCPStyle"."family_id" AS "Beer__Style__BJCPStyle__family_id","Beer__Style__BJCPStyle__Family"."id" AS "Beer__Style__BJCPStyle__Family__id","Beer__Style__BJCPStyle__Family"."created_at" AS "Beer__Style__BJCPStyle__Family__created_at","Beer__Style__BJCPStyle__Family"."updated_at" AS "Beer__Style__BJCPStyle__Family__updated_at","Beer__Style__BJCPStyle__Family"."deleted_at" AS "Beer__Style__BJCPStyle__Family__deleted_at","Beer__Style__BJCPStyle__Family"."name" AS "Beer__Style__BJCPStyle__Family__name","Beer__Style__BJCPStyle__Category"."id" AS "Beer__Style__BJCPStyle__Category__id","Beer__Style__BJCPStyle__Category"."created_at" AS "Beer__Style__BJCPStyle__Category__created_at","Beer__Style__BJCPStyle__Category"."updated_at" AS "Beer__Style__BJCPStyle__Category__updated_at","Beer__Style__BJCPStyle__Category"."deleted_at" AS "Beer__Style__BJCPStyle__Category__deleted_at","Beer__Style__BJCPStyle__Category"."name" AS "Beer__Style__BJCPStyle__Category__name" FROM "cellar_entries" LEFT JOIN "beers" "Beer" ON "cellar_entries"."beer_id" = "Beer"."id" AND "Beer"."deleted_at" IS NULL LEFT JOIN "location_in_cellars" "Location" ON "cellar_entries"."location_id" = "Location"."id" AND "Location"."deleted_at" IS NULL LEFT JOIN "beer_formats" "Format" ON "cellar_entries"."format_id" = "Format"."id" AND "Format"."deleted_at" IS NULL LEFT JOIN "cellars" "Cellar" ON "cellar_entries"."cellar_id" = "Cellar"."id" AND "Cellar"."deleted_at" IS NULL LEFT JOIN "beer_styles" "Beer__Style" ON "Beer"."style_id" = "Beer__Style"."id" AND "Beer__Style"."deleted_at" IS NULL LEFT JOIN "beer_style_bjcps" "Beer__Style__BJCPStyle" ON "Beer__Style"."bjcp_style_id" = "Beer__Style__BJCPStyle"."bjcp_id" LEFT JOIN "beer_style_families" "Beer__Style__BJCPStyle__Family" ON "Beer__Style__BJCPStyle"."family_id" = "Beer__Style__BJCPStyle__Family"."id" AND "Beer__Style__BJCPStyle__Family"."deleted_at" IS NULL LEFT JOIN "beer_category_bjcps" "Beer__Style__BJCPStyle__Category" ON "Beer__Style__BJCPStyle"."category_id" = "Beer__Style__BJCPStyle__Category"."id" AND "Beer__Style__BJCPStyle__Category"."deleted_at" IS NULL WHERE cellar_entries.cellar_id = $1 AND "Beer".brewery_id = $2 AND "Beer".abv >= $3 AND "Beer".ABV <= $4 AND "Beer".external_rating >= $5 AND "Beer".external_rating <= $6 AND "Format".size_metric >= $7 AND "Format".size_metric <= $8 AND special = $9 AND had_before = $10 AND "Beer".style_id = $11 AND drink_before < $12 AND quantity >= $13 AND vintage >= $14 AND vintage <= $15 AND cellar_entries.id IN (SELECT cellar_entry_id FROM cellar_entry_tags INNER JOIN tags ON tag_id = tags.id WHERE tag IN ($16,$17) GROUP BY cellar_entry_id HAVING COUNT(*) = $18) AND date_added < $19 AND "cellar_entries"."deleted_at" IS NULL`)).
 		WithArgs(1, 1, 4.0, 20.0, 3.5, 5.0, 330, 375, false, false, 1, sqlmock.AnyArg(), 1, 2011, 2020, "dark fruits", "sweet", 2, expectedDate).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "quantity", "Beer__name"}).
+			sqlmock.NewRows([]string{"id", columnQuantity, columnBeerName}).
 				AddRow(uint(10), 2, "Pannepot").
 				AddRow(uint(11), 1, "Pannepeut"))
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "cellar_entry_tags" WHERE "cellar_entry_tags"."cellar_entry_id" IN ($1,$2)`)).
@@ -367,16 +367,16 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FindsRecommendations()
 
 	filter := api.CellarFilter{
 		BreweryId:       pointy.Uint64(1),
-		MinimumAbv:      pointy.Float64(4.0),
-		MaximumAbv:      pointy.Float64(20.0),
-		MinimumRating:   pointy.Float64(3.5),
-		MaximumRating:   pointy.Float64(5.0),
+		MinimumAbv:      new(4.0),
+		MaximumAbv:      new(20.0),
+		MinimumRating:   new(3.5),
+		MaximumRating:   new(5.0),
 		MinimumSize:     pointy.Int64(330),
 		MaximumSize:     pointy.Int64(375),
-		Special:         pointy.Bool(false),
-		HadBefore:       pointy.Bool(false),
+		Special:         new(false),
+		HadBefore:       new(false),
 		StyleId:         pointy.Uint64(1),
-		OverdueToDrink:  pointy.Bool(false),
+		OverdueToDrink:  new(false),
 		MinimumQuantity: pointy.Int64(1),
 		MinimumVintage:  pointy.Uint64(2011),
 		MaximumVintage:  pointy.Uint64(2020),
@@ -392,7 +392,7 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FindsRecommendations()
 func (suite *CellarTestSuite) TestGetCellarBreweryNames() {
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT DISTINCT breweries.id,breweries.name FROM "breweries" INNER JOIN beers b on breweries.id = b.brewery_id INNER JOIN cellar_entries ce on b.id = ce.beer_id WHERE ce.cellar_id = $1 AND "breweries"."deleted_at" IS NULL ORDER BY breweries.name asc`)).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName}).
 			AddRow(uint(1), "Brouwerij de Molen").
 			AddRow(uint(10), "Fremont Brewing").
 			AddRow(uint(20), "Temporal Artisan Ales"))
@@ -409,14 +409,14 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FiltersByBJCPStyleIDAn
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT "cellar_entries"."id","cellar_entries"."created_at","cellar_entries"."updated_at","cellar_entries"."deleted_at","cellar_entries"."cellar_id","cellar_entries"."beer_id","cellar_entries"."vintage","cellar_entries"."quantity","cellar_entries"."location_id","cellar_entries"."format_id","cellar_entries"."had_before","cellar_entries"."date_added","cellar_entries"."drink_before","cellar_entries"."cellar_until","cellar_entries"."special","Beer"."id" AS "Beer__id","Beer"."created_at" AS "Beer__created_at","Beer"."updated_at" AS "Beer__updated_at","Beer"."deleted_at" AS "Beer__deleted_at","Beer"."name" AS "Beer__name","Beer"."description" AS "Beer__description","Beer"."image_url" AS "Beer__image_url","Beer"."brewery_id" AS "Beer__brewery_id","Beer"."style_id" AS "Beer__style_id","Beer"."abv" AS "Beer__abv","Beer"."ibu" AS "Beer__ibu","Beer"."external_id" AS "Beer__external_id","Beer"."external_source" AS "Beer__external_source","Beer"."external_rating" AS "Beer__external_rating","Location"."id" AS "Location__id","Location"."created_at" AS "Location__created_at","Location"."updated_at" AS "Location__updated_at","Location"."deleted_at" AS "Location__deleted_at","Location"."name" AS "Location__name","Location"."cellar_id" AS "Location__cellar_id","Format"."id" AS "Format__id","Format"."created_at" AS "Format__created_at","Format"."updated_at" AS "Format__updated_at","Format"."deleted_at" AS "Format__deleted_at","Format"."package" AS "Format__package","Format"."size_metric" AS "Format__size_metric","Format"."size_imperial" AS "Format__size_imperial","Cellar"."id" AS "Cellar__id","Cellar"."created_at" AS "Cellar__created_at","Cellar"."updated_at" AS "Cellar__updated_at","Cellar"."deleted_at" AS "Cellar__deleted_at","Cellar"."name" AS "Cellar__name","Cellar"."description" AS "Cellar__description","Cellar"."owner_id" AS "Cellar__owner_id","Beer__Style"."id" AS "Beer__Style__id","Beer__Style"."created_at" AS "Beer__Style__created_at","Beer__Style"."updated_at" AS "Beer__Style__updated_at","Beer__Style"."deleted_at" AS "Beer__Style__deleted_at","Beer__Style"."name" AS "Beer__Style__name","Beer__Style"."bjcp_style_id" AS "Beer__Style__bjcp_style_id","Beer__Style__BJCPStyle"."bjcp_id" AS "Beer__Style__BJCPStyle__bjcp_id","Beer__Style__BJCPStyle"."name" AS "Beer__Style__BJCPStyle__name","Beer__Style__BJCPStyle"."category_id" AS "Beer__Style__BJCPStyle__category_id","Beer__Style__BJCPStyle"."family_id" AS "Beer__Style__BJCPStyle__family_id","Beer__Style__BJCPStyle__Family"."id" AS "Beer__Style__BJCPStyle__Family__id","Beer__Style__BJCPStyle__Family"."created_at" AS "Beer__Style__BJCPStyle__Family__created_at","Beer__Style__BJCPStyle__Family"."updated_at" AS "Beer__Style__BJCPStyle__Family__updated_at","Beer__Style__BJCPStyle__Family"."deleted_at" AS "Beer__Style__BJCPStyle__Family__deleted_at","Beer__Style__BJCPStyle__Family"."name" AS "Beer__Style__BJCPStyle__Family__name","Beer__Style__BJCPStyle__Category"."id" AS "Beer__Style__BJCPStyle__Category__id","Beer__Style__BJCPStyle__Category"."created_at" AS "Beer__Style__BJCPStyle__Category__created_at","Beer__Style__BJCPStyle__Category"."updated_at" AS "Beer__Style__BJCPStyle__Category__updated_at","Beer__Style__BJCPStyle__Category"."deleted_at" AS "Beer__Style__BJCPStyle__Category__deleted_at","Beer__Style__BJCPStyle__Category"."name" AS "Beer__Style__BJCPStyle__Category__name" FROM "cellar_entries" LEFT JOIN "beers" "Beer" ON "cellar_entries"."beer_id" = "Beer"."id" AND "Beer"."deleted_at" IS NULL LEFT JOIN "location_in_cellars" "Location" ON "cellar_entries"."location_id" = "Location"."id" AND "Location"."deleted_at" IS NULL LEFT JOIN "beer_formats" "Format" ON "cellar_entries"."format_id" = "Format"."id" AND "Format"."deleted_at" IS NULL LEFT JOIN "cellars" "Cellar" ON "cellar_entries"."cellar_id" = "Cellar"."id" AND "Cellar"."deleted_at" IS NULL LEFT JOIN "beer_styles" "Beer__Style" ON "Beer"."style_id" = "Beer__Style"."id" AND "Beer__Style"."deleted_at" IS NULL LEFT JOIN "beer_style_bjcps" "Beer__Style__BJCPStyle" ON "Beer__Style"."bjcp_style_id" = "Beer__Style__BJCPStyle"."bjcp_id" LEFT JOIN "beer_style_families" "Beer__Style__BJCPStyle__Family" ON "Beer__Style__BJCPStyle"."family_id" = "Beer__Style__BJCPStyle__Family"."id" AND "Beer__Style__BJCPStyle__Family"."deleted_at" IS NULL LEFT JOIN "beer_category_bjcps" "Beer__Style__BJCPStyle__Category" ON "Beer__Style__BJCPStyle"."category_id" = "Beer__Style__BJCPStyle__Category"."id" AND "Beer__Style__BJCPStyle__Category"."deleted_at" IS NULL WHERE cellar_entries.cellar_id = $1 AND "Beer__Style__BJCPStyle".bjcp_id = $2 AND "Beer__Style__BJCPStyle".family_id = $3 AND "cellar_entries"."deleted_at" IS NULL`)).
 		WithArgs(1, "21A", 3).
 		WillReturnRows(
-			sqlmock.NewRows([]string{"id", "quantity", "Beer__name", "Beer__Style__BJCPStyle__bjcp_id", "Beer__Style__BJCPStyle__family_id"}).
+			sqlmock.NewRows([]string{"id", columnQuantity, columnBeerName, "Beer__Style__BJCPStyle__bjcp_id", "Beer__Style__BJCPStyle__family_id"}).
 				AddRow(uint(20), 1, "Stone IPA", "21A", 3).
 				AddRow(uint(21), 2, "Lagunitas IPA", "21A", 3))
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "cellar_entry_tags" WHERE "cellar_entry_tags"."cellar_entry_id" IN ($1,$2)`)).
 		WithArgs(20, 21).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	filter := api.CellarFilter{
-		BjcpStyleId:   pointy.String("21A"),
+		BjcpStyleId:   new("21A"),
 		StyleFamilyId: pointy.Uint64(3),
 	}
 
@@ -432,28 +432,28 @@ func (suite *CellarTestSuite) TestGetCellarStyles_RetrievesDistinctStylesWithPre
 	// Expect main query for distinct beer styles
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT DISTINCT "beer_styles"."id","beer_styles"."created_at","beer_styles"."updated_at","beer_styles"."deleted_at","beer_styles"."name","beer_styles"."bjcp_style_id" FROM "beer_styles" INNER JOIN beers ON beer_styles.id = beers.style_id INNER JOIN cellar_entries ON beers.id = cellar_entries.beer_id WHERE cellar_entries.cellar_id = $1 AND cellar_entries.deleted_at IS NULL AND "beer_styles"."deleted_at" IS NULL ORDER BY beer_styles.name asc`)).
 		WithArgs(1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "bjcp_style_id"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName, "bjcp_style_id"}).
 			AddRow(uint(5), "American IPA", "21A").
 			AddRow(uint(10), "Belgian Dubbel", "26B"))
 
 	// Expect preload query for BJCPStyle
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_style_bjcps" WHERE "beer_style_bjcps"."bjcp_id" IN ($1,$2)`)).
 		WithArgs("21A", "26B").
-		WillReturnRows(sqlmock.NewRows([]string{"bjcp_id", "name", "category_id", "family_id"}).
+		WillReturnRows(sqlmock.NewRows([]string{"bjcp_id", columnName, "category_id", "family_id"}).
 			AddRow("21A", "American IPA", uint(21), uint(3)).
 			AddRow("26B", "Belgian Dubbel", uint(26), uint(5)))
 
 	// Expect preload query for Category
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_category_bjcps" WHERE "beer_category_bjcps"."id" IN ($1,$2) AND "beer_category_bjcps"."deleted_at" IS NULL`)).
 		WithArgs(uint(21), uint(26)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName}).
 			AddRow(uint(21), "IPA").
 			AddRow(uint(26), "Monastic Ale"))
 
 	// Expect preload query for Family
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_style_families" WHERE "beer_style_families"."id" IN ($1,$2) AND "beer_style_families"."deleted_at" IS NULL`)).
 		WithArgs(uint(3), uint(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName}).
 			AddRow(uint(3), "Hoppy").
 			AddRow(uint(5), "Malty"))
 
@@ -503,7 +503,7 @@ func (suite *CellarTestSuite) TestSaveAdventCalendar() {
 				Day:           startDate,
 				Revealed:      false,
 				Filter: model.AdventCalendarFilter{
-					MaximumRating: pointy.Float64(6.5),
+					MaximumRating: new(6.5),
 				},
 			},
 		},
@@ -748,4 +748,40 @@ func (suite *CellarTestSuite) TestGetAdventCalendarFilter_NotFound() {
 
 	suite.Require().ErrorIs(err, gorm.ErrRecordNotFound)
 	suite.Nil(filter)
+}
+
+const columnCellarEntryID = "cellar_entry_id"
+
+const findFutureAdventBeersSQL = `SELECT "advent_calendar_beers"."id","advent_calendar_beers"."created_at","advent_calendar_beers"."updated_at","advent_calendar_beers"."deleted_at","advent_calendar_beers"."advent_calendar_id","advent_calendar_beers"."cellar_entry_id","advent_calendar_beers"."filter_id","advent_calendar_beers"."day","advent_calendar_beers"."revealed" FROM "advent_calendar_beers" JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id WHERE advent_calendars.cellar_id = $1 AND advent_calendar_beers.cellar_entry_id = $2 AND advent_calendar_beers.day > $3 AND "advent_calendar_beers"."deleted_at" IS NULL`
+
+func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry() {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	day := time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(findFutureAdventBeersSQL)).
+		WithArgs(1, 10, after).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "advent_calendar_id", columnCellarEntryID, "day"}).
+			AddRow(7, 3, 10, day))
+
+	beers, err := suite.repository.FindFutureAdventCalendarBeersForEntry(context.Background(), 1, 10, after)
+
+	suite.Require().NoError(err)
+	suite.Require().Len(beers, 1)
+	suite.Equal(uint(3), beers[0].AdventCalendarID)
+	suite.Equal(uint(10), beers[0].CellarEntryID)
+	suite.True(day.Equal(beers[0].Day))
+}
+
+func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry_Error() {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(findFutureAdventBeersSQL)).
+		WithArgs(1, 10, after).
+		WillReturnError(errors.New("database error"))
+
+	beers, err := suite.repository.FindFutureAdventCalendarBeersForEntry(context.Background(), 1, 10, after)
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "database error")
+	suite.Nil(beers)
 }

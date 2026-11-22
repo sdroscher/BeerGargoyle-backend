@@ -40,7 +40,7 @@ func makeRows(servingType string, n int) []untappdcsv.Row {
 	for idx := range rows {
 		rows[idx] = untappdcsv.Row{
 			BeerName:    "Beer",
-			BreweryName: "Brewery",
+			BreweryName: testBreweryName,
 			ServingType: servingType,
 			CreatedAt:   time.Date(2024, 1, idx+1, 0, 0, 0, 0, time.UTC),
 			CheckinID:   uint64(idx) + 1,
@@ -53,13 +53,13 @@ func makeRows(servingType string, n int) []untappdcsv.Row {
 }
 
 func TestParse_BasicRow(t *testing.T) {
-	csv := csvHeader + "\n" + csvRow("Juicy AF", "Boombox", "Can", "2024-03-01 12:00:00", "999", "12345", "4.5", "great beer")
+	csv := csvHeader + "\n" + csvRow("Juicy AF", "Boombox", testPackageCan, "2024-03-01 12:00:00", "999", "12345", "4.5", "great beer")
 	rows, err := untappdcsv.Parse(strings.NewReader(csv))
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "Juicy AF", rows[0].BeerName)
 	assert.Equal(t, "Boombox", rows[0].BreweryName)
-	assert.Equal(t, "Can", rows[0].ServingType)
+	assert.Equal(t, testPackageCan, rows[0].ServingType)
 	assert.Equal(t, uint64(999), rows[0].CheckinID)
 	assert.Equal(t, uint64(12345), rows[0].BeerID)
 	assert.InDelta(t, 4.5, rows[0].RatingScore, 0.001)
@@ -94,11 +94,11 @@ func TestParse_MissingRequiredColumn(t *testing.T) {
 func TestBuildActivities_FiltersBeforeWatermark(t *testing.T) {
 	watermark := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 	rows := []untappdcsv.Row{
-		{BeerName: "Old Beer", BreweryName: "Brewery", ServingType: "Can", CreatedAt: time.Date(2024, 5, 31, 0, 0, 0, 0, time.UTC), CheckinID: 1},
-		{BeerName: "New Beer", BreweryName: "Brewery", ServingType: "Can", CreatedAt: time.Date(2024, 6, 2, 0, 0, 0, 0, time.UTC), CheckinID: 2},
+		{BeerName: "Old Beer", BreweryName: testBreweryName, ServingType: testPackageCan, CreatedAt: time.Date(2024, 5, 31, 0, 0, 0, 0, time.UTC), CheckinID: 1},
+		{BeerName: "New Beer", BreweryName: testBreweryName, ServingType: testPackageCan, CreatedAt: time.Date(2024, 6, 2, 0, 0, 0, 0, time.UTC), CheckinID: 2},
 	}
 	beerIDByName := map[string]uint{
-		untappdcsv.NameKey("New Beer", "Brewery"): 5,
+		untappdcsv.NameKey("New Beer", testBreweryName): 5,
 	}
 	activeEntryIDByBeerID := map[uint]uint{5: 10}
 	anyEntryIDByBeerID := map[uint]uint{5: 10}
@@ -119,7 +119,7 @@ func TestBuildActivities_FiltersWrongServingType(t *testing.T) {
 	rows := []untappdcsv.Row{
 		{ServingType: "Draft", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1},
 		{ServingType: "Cask", CreatedAt: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC), CheckinID: 2},
-		{ServingType: "Can", CreatedAt: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), CheckinID: 3},
+		{ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC), CheckinID: 3},
 		{ServingType: "Bottle", CreatedAt: time.Date(2024, 1, 4, 0, 0, 0, 0, time.UTC), CheckinID: 4},
 		{ServingType: "", CreatedAt: time.Date(2024, 1, 5, 0, 0, 0, 0, time.UTC), CheckinID: 5},
 	}
@@ -131,9 +131,9 @@ func TestBuildActivities_FiltersWrongServingType(t *testing.T) {
 }
 
 func TestBuildActivities_SkipsAlreadyImported(t *testing.T) {
-	rows := makeRows("Can", 3)
+	rows := makeRows(testPackageCan, 3)
 	existing := map[uint64]struct{}{2: {}}
-	// makeRows uses BeerName "Beer", BreweryName "Brewery", BeerID 100.
+	// makeRows uses BeerName "Beer", BreweryName testBreweryName, BeerID 100.
 	beerIDByExtID := map[uint64]uint{100: 5}
 	activeEntryIDByBeerID := map[uint]uint{5: 10}
 	anyEntryIDByBeerID := map[uint]uint{5: 10}
@@ -146,7 +146,7 @@ func TestBuildActivities_SkipsAlreadyImported(t *testing.T) {
 
 func TestBuildActivities_MatchesByExternalID(t *testing.T) {
 	rows := []untappdcsv.Row{
-		{BeerName: "X", BreweryName: "Y", ServingType: "Can", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, BeerID: 99},
+		{BeerName: "X", BreweryName: "Y", ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, BeerID: 99},
 	}
 	beerIDByExtID := map[uint64]uint{99: 10}
 	activeEntryIDByBeerID := map[uint]uint{10: 50}
@@ -176,7 +176,7 @@ func TestBuildActivities_MatchesByNameFallback(t *testing.T) {
 
 func TestBuildActivities_NoMatchIsSkipped(t *testing.T) {
 	rows := []untappdcsv.Row{
-		{BeerName: "Unknown", BreweryName: "Unknown", ServingType: "Can", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1},
+		{BeerName: "Unknown", BreweryName: "Unknown", ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1},
 	}
 
 	acts, updates, skipped := untappdcsv.BuildActivities(rows, 1, time.Time{}, nil, nil, nil, nil, nil, nil)
@@ -189,7 +189,7 @@ func TestBuildActivities_SetsFieldsCorrectly(t *testing.T) {
 	row := untappdcsv.Row{
 		BeerName:    "Test Beer",
 		BreweryName: "Test Brewery",
-		ServingType: "Can",
+		ServingType: testPackageCan,
 		CreatedAt:   time.Date(2024, 3, 15, 10, 30, 0, 0, time.UTC),
 		CheckinID:   12345,
 		RatingScore: 4.25,
@@ -217,7 +217,7 @@ func TestBuildActivities_ZeroRatingNotSet(t *testing.T) {
 	activeEntryIDByBeerID := map[uint]uint{1: 10}
 	anyEntryIDByBeerID := map[uint]uint{1: 10}
 	rows := []untappdcsv.Row{
-		{ServingType: "Can", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, RatingScore: 0},
+		{ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, RatingScore: 0},
 	}
 
 	acts, _, _ := untappdcsv.BuildActivities(rows, 1, time.Time{}, nil, nil, beerIDByName, anyEntryIDByBeerID, activeEntryIDByBeerID, nil)
@@ -230,7 +230,7 @@ func TestBuildActivities_EmptyCommentNotSet(t *testing.T) {
 	activeEntryIDByBeerID := map[uint]uint{1: 10}
 	anyEntryIDByBeerID := map[uint]uint{1: 10}
 	rows := []untappdcsv.Row{
-		{ServingType: "Can", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, Comment: ""},
+		{ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1, Comment: ""},
 	}
 
 	acts, _, _ := untappdcsv.BuildActivities(rows, 1, time.Time{}, nil, nil, beerIDByName, anyEntryIDByBeerID, activeEntryIDByBeerID, nil)
@@ -244,7 +244,7 @@ func TestBuildActivities_UpdatesExistingConsumedActivity(t *testing.T) {
 	consumedAt := time.Date(2024, 3, 18, 10, 0, 0, 0, time.UTC)
 
 	rows := []untappdcsv.Row{
-		{BeerName: "Stout", BreweryName: "Dark Brewery", ServingType: "Can", CreatedAt: checkinTime, CheckinID: 555, RatingScore: 4.5, Comment: "Rich"},
+		{BeerName: "Stout", BreweryName: "Dark Brewery", ServingType: testPackageCan, CreatedAt: checkinTime, CheckinID: 555, RatingScore: 4.5, Comment: "Rich"},
 	}
 	beerIDByName := map[string]uint{untappdcsv.NameKey("Stout", "Dark Brewery"): 9}
 	anyEntryIDByBeerID := map[uint]uint{9: 20}
@@ -272,7 +272,7 @@ func TestBuildActivities_NoConsumedMatchOutsideWindow(t *testing.T) {
 	consumedAt := time.Date(2024, 2, 10, 0, 0, 0, 0, time.UTC)
 
 	rows := []untappdcsv.Row{
-		{BeerName: "Beer", BreweryName: "Brewery", ServingType: "Can", CreatedAt: checkinTime, CheckinID: 1, BeerID: 100},
+		{BeerName: "Beer", BreweryName: testBreweryName, ServingType: testPackageCan, CreatedAt: checkinTime, CheckinID: 1, BeerID: 100},
 	}
 	beerIDByExtID := map[uint64]uint{100: 5}
 	anyEntryIDByBeerID := map[uint]uint{5: 10}
@@ -293,7 +293,7 @@ func TestBuildActivities_UpdatePreferredOverInsert(t *testing.T) {
 	consumedAt := checkinTime.Add(24 * time.Hour)
 
 	rows := []untappdcsv.Row{
-		{BeerName: "IPA", BreweryName: "Hop Farm", ServingType: "Can", CreatedAt: checkinTime, CheckinID: 42},
+		{BeerName: "IPA", BreweryName: "Hop Farm", ServingType: testPackageCan, CreatedAt: checkinTime, CheckinID: 42},
 	}
 	beerIDByName := map[string]uint{untappdcsv.NameKey("IPA", "Hop Farm"): 3}
 	anyEntryIDByBeerID := map[uint]uint{3: 7}
@@ -311,7 +311,7 @@ func TestBuildActivities_UpdatePreferredOverInsert(t *testing.T) {
 
 func TestBuildActivities_SkipsDeletedEntryWithoutConsumedActivity(t *testing.T) {
 	rows := []untappdcsv.Row{
-		{BeerName: "Gone Beer", BreweryName: "Closed Brewery", ServingType: "Can", CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1},
+		{BeerName: "Gone Beer", BreweryName: "Closed Brewery", ServingType: testPackageCan, CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), CheckinID: 1},
 	}
 	beerIDByName := map[string]uint{untappdcsv.NameKey("Gone Beer", "Closed Brewery"): 8}
 	anyEntryIDByBeerID := map[uint]uint{8: 30}

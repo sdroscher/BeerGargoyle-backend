@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"gorm.io/gorm"
@@ -41,7 +40,7 @@ func (suite *UserServerTestSuite) SetupTest() {
 func (suite *UserServerTestSuite) TestAddUser_Success() {
 	ctx := context.Background()
 	userUUID := uuid.New()
-	suite.userRepo.EXPECT().AddUser(ctx, bobName, bobEmail, pointy.String(bobUntappd)).
+	suite.userRepo.EXPECT().AddUser(ctx, bobName, bobEmail, new(bobUntappd)).
 		Return(&model.User{Model: gorm.Model{ID: 1}, UUID: userUUID, Username: bobName, Email: bobEmail}, nil)
 
 	result, err := suite.service.AddUser(ctx, connect.NewRequest(&apiv1.AddUserRequest{
@@ -97,7 +96,7 @@ func (suite *UserServerTestSuite) TestGetUserByEmail_Success() {
 	ctx := context.Background()
 	userUUID := uuid.New()
 	suite.userRepo.EXPECT().GetUserFromEmail(ctx, bobEmail).Return(&model.User{
-		UUID: userUUID, Username: bobName, Email: bobEmail, UntappdUserName: pointy.String(bobUntappd),
+		UUID: userUUID, Username: bobName, Email: bobEmail, UntappdUserName: new(bobUntappd),
 	}, nil)
 
 	result, err := suite.service.GetUserByEmail(ctx, connect.NewRequest(&apiv1.GetUserByEmailRequest{Email: bobEmail}))

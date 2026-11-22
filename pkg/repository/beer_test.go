@@ -34,11 +34,11 @@ func (suite *BeerTestSuite) TestAddBeer_AddsBeer() {
 		Description:    "Peach Saison with Brett",
 		BreweryID:      10,
 		StyleID:        2,
-		ABV:            pointy.Float64(8.2),
+		ABV:            new(8.2),
 		IBU:            pointy.Uint64(18),
-		ExternalSource: pointy.String("untappd-web"),
+		ExternalSource: new("untappd-web"),
 		ExternalID:     pointy.Uint64(4557393),
-		ExternalRating: pointy.Float64(4.0),
+		ExternalRating: new(4.0),
 	}
 	result, err := suite.repository.AddBeer(context.Background(), beer)
 	suite.Require().NoError(err)
@@ -48,7 +48,7 @@ func (suite *BeerTestSuite) TestAddBeer_AddsBeer() {
 func (suite *BeerTestSuite) TestFindBreweryByExternalSource_FindsBrewery() {
 	suite.mock.ExpectQuery(`^SELECT (.+) FROM "breweries" WHERE \(external_id \= \$1 AND external_source \= \$2\) (.+)`).
 		WithArgs(256500, "untappd-web", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(uint(1), "Paronomastic Brewing"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName}).AddRow(uint(1), "Paronomastic Brewing"))
 
 	brewery, err := suite.repository.FindBreweryByExternalSource(context.Background(), 256500, "untappd-web")
 	suite.Require().NoError(err)
@@ -111,7 +111,7 @@ func (suite *BeerTestSuite) TestAddBeerStyle_DefaultsToOTHERWhenNotProvided() {
 	// When ID is 0, it means there was a conflict and we need to fetch the existing record
 	suite.mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "beer_styles" WHERE name = $1 AND "beer_styles"."deleted_at" IS NULL ORDER BY "beer_styles"."id" LIMIT $2`)).
 		WithArgs("Custom Style", 1).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "bjcp_style_id"}).AddRow(uint(3), "Custom Style", "OTHER"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", columnName, "bjcp_style_id"}).AddRow(uint(3), "Custom Style", "OTHER"))
 
 	beerStyle := model.BeerStyle{Name: "Custom Style", BJCPStyleID: ""}
 	style, err := suite.repository.AddBeerStyle(context.Background(), beerStyle)

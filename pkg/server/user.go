@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/bufbuild/connect-go"
-	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -36,7 +35,7 @@ func (u *UserServer) AddUser(ctx context.Context, request *connect.Request[api.A
 	var untappdUserName *string
 
 	if len(request.Msg.GetUntappedUsername()) > 0 {
-		untappdUserName = pointy.String(request.Msg.GetUntappedUsername())
+		untappdUserName = new(request.Msg.GetUntappedUsername())
 	}
 
 	user, err := u.repository.AddUser(ctx, request.Msg.GetName(), request.Msg.GetEmail(), untappdUserName)
