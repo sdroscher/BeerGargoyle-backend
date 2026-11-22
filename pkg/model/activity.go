@@ -35,6 +35,30 @@ type YearInReview struct {
 	TopCategories []NameCount
 	TopBreweries  []NameCount
 	ByMonth       []MonthlyCount
+
+	BiggestDay       *DayCount
+	MostHadBeer      *YearInReviewBeer
+	StrongestBeer    *YearInReviewBeer
+	GentlestBeer     *YearInReviewBeer
+	HighestRatedBeer *YearInReviewBeer
+	LowestRatedBeer  *YearInReviewBeer
+}
+
+// DayCount is the number of beers consumed on a single calendar day (Date is YYYY-MM-DD).
+type DayCount struct {
+	Date  string
+	Count int64
+}
+
+// YearInReviewBeer is a beer highlighted in a year in review, with how many times it was consumed.
+type YearInReviewBeer struct {
+	BeerID         uint
+	Name           string
+	BreweryName    string
+	StyleName      string
+	ABV            *float64
+	ExternalRating *float64
+	Count          int64
 }
 
 // ConsumedActivitySummary is a lightweight projection of Activity used during Untappd CSV import

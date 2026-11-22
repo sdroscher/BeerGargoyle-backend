@@ -563,5 +563,36 @@ func YearInReviewFromModel(yir *model.YearInReview) *api.YearInReview {
 		TopCategories: topCategories,
 		TopBreweries:  topBreweries,
 		ByMonth:       byMonth,
+
+		BiggestDay:       dayCountFromModel(yir.BiggestDay),
+		MostHadBeer:      yearInReviewBeerFromModel(yir.MostHadBeer),
+		StrongestBeer:    yearInReviewBeerFromModel(yir.StrongestBeer),
+		GentlestBeer:     yearInReviewBeerFromModel(yir.GentlestBeer),
+		HighestRatedBeer: yearInReviewBeerFromModel(yir.HighestRatedBeer),
+		LowestRatedBeer:  yearInReviewBeerFromModel(yir.LowestRatedBeer),
+	}
+}
+
+func dayCountFromModel(day *model.DayCount) *api.BiggestDay {
+	if day == nil {
+		return nil
+	}
+
+	return &api.BiggestDay{Date: day.Date, Count: day.Count}
+}
+
+func yearInReviewBeerFromModel(beer *model.YearInReviewBeer) *api.YearInReviewBeer {
+	if beer == nil {
+		return nil
+	}
+
+	return &api.YearInReviewBeer{
+		BeerId:         uint64(beer.BeerID),
+		Name:           beer.Name,
+		BreweryName:    beer.BreweryName,
+		StyleName:      beer.StyleName,
+		Abv:            beer.ABV,
+		ExternalRating: beer.ExternalRating,
+		Count:          beer.Count,
 	}
 }

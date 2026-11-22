@@ -358,6 +358,21 @@ message MonthlyCount {
   int64 count = 2;
 }
 
+message BiggestDay {
+  string date = 1; // YYYY-MM-DD
+  int64 count = 2;
+}
+
+message YearInReviewBeer {
+  uint64 beer_id = 1;
+  string name = 2;
+  string brewery_name = 3;
+  string style_name = 4;
+  optional double abv = 5;
+  optional double external_rating = 6;
+  int64 count = 7;
+}
+
 message YearInReview {
   int32 year = 1;
   uint64 cellar_id = 2;
@@ -370,11 +385,18 @@ message YearInReview {
   repeated NameCount top_breweries = 9;
   repeated MonthlyCount by_month = 10;
   repeated NameCount top_categories = 11;
+  BiggestDay biggest_day = 12;
+  YearInReviewBeer most_had_beer = 13;
+  YearInReviewBeer strongest_beer = 14;
+  YearInReviewBeer gentlest_beer = 15;
+  YearInReviewBeer highest_rated_beer = 16;
+  YearInReviewBeer lowest_rated_beer = 17;
 }
 
 message GetYearInReviewRequest {
   uint64 cellar_id = 1;
   int32 year = 2; // defaults to current year if 0
+  string time_zone = 3;
 }
 
 message GetYearInReviewResponse {
