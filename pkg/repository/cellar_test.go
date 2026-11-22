@@ -750,6 +750,8 @@ func (suite *CellarTestSuite) TestGetAdventCalendarFilter_NotFound() {
 	suite.Nil(filter)
 }
 
+const columnCellarEntryID = "cellar_entry_id"
+
 const findFutureAdventBeersSQL = `SELECT "advent_calendar_beers"."id","advent_calendar_beers"."created_at","advent_calendar_beers"."updated_at","advent_calendar_beers"."deleted_at","advent_calendar_beers"."advent_calendar_id","advent_calendar_beers"."cellar_entry_id","advent_calendar_beers"."filter_id","advent_calendar_beers"."day","advent_calendar_beers"."revealed" FROM "advent_calendar_beers" JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id WHERE advent_calendars.cellar_id = $1 AND advent_calendar_beers.cellar_entry_id = $2 AND advent_calendar_beers.day > $3 AND "advent_calendar_beers"."deleted_at" IS NULL`
 
 func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry() {
@@ -758,7 +760,7 @@ func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry() {
 
 	suite.mock.ExpectQuery(regexp.QuoteMeta(findFutureAdventBeersSQL)).
 		WithArgs(1, 10, after).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "advent_calendar_id", "cellar_entry_id", "day"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "advent_calendar_id", columnCellarEntryID, "day"}).
 			AddRow(7, 3, 10, day))
 
 	beers, err := suite.repository.FindFutureAdventCalendarBeersForEntry(context.Background(), 1, 10, after)
