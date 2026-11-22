@@ -157,12 +157,15 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	}
 
 	beer := model.CellarEntry{
-		CellarID:   uint(request.Msg.GetCellarId()),
-		BeerID:     uint(request.Msg.GetBeerId()),
-		Quantity:   request.Msg.GetQuantity(),
-		LocationID: pointy.Uint(uint(request.Msg.GetLocationId())),
-		HadBefore:  request.Msg.GetHadBefore(),
-		Special:    request.Msg.GetSpecial(),
+		CellarID:  uint(request.Msg.GetCellarId()),
+		BeerID:    uint(request.Msg.GetBeerId()),
+		Quantity:  request.Msg.GetQuantity(),
+		HadBefore: request.Msg.GetHadBefore(),
+		Special:   request.Msg.GetSpecial(),
+	}
+
+	if request.Msg.GetLocationId() != 0 {
+		beer.LocationID = pointy.Uint(uint(request.Msg.GetLocationId()))
 	}
 
 	if request.Msg.GetDrinkBefore() != nil {

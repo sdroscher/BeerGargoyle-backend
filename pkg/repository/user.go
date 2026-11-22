@@ -8,6 +8,14 @@ import (
 	"droscher.com/BeerGargoyle/pkg/model"
 )
 
+// UserRepository is the data access surface used by the user service.
+type UserRepository interface {
+	AddUser(ctx context.Context, name string, email string, untappdUserName *string) (*model.User, error)
+	GetUserFromEmail(ctx context.Context, email string) (*model.User, error)
+}
+
+var _ UserRepository = (*Repository)(nil)
+
 func (r *Repository) GetUserByUUID(ctx context.Context, uuid uuid.UUID) (*model.User, error) {
 	var user model.User
 

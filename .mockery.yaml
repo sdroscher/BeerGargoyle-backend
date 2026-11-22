@@ -12,4 +12,11 @@ packages:
       all: false
     interfaces:
       ActivityRepository: {}
+      BeerRepository: {}
       CellarRepository: {}
+      UserRepository: {}
+  droscher.com/BeerGargoyle/pkg/integrations:
+    config:
+      all: false
+    interfaces:
+      Integration: {}

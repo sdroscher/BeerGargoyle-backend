@@ -2,10 +2,12 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/bufbuild/connect-go"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 	"go.openly.dev/pointy"
@@ -19,6 +21,20 @@ import (
 	"droscher.com/BeerGargoyle/pkg/auth"
 	"droscher.com/BeerGargoyle/pkg/model"
 	"droscher.com/BeerGargoyle/pkg/server"
+)
+
+// Shared test constants (goconst: repeated literals across the server_test package).
+const (
+	dbDownMessage = "db down"
+	basementName  = "Basement"
+	bobName       = "bob"
+	bobEmail      = "bob@example.com"
+	bobUntappd    = "bob_untappd"
+	nobodyEmail   = "nobody@example.com"
+	fridgeName    = "Fridge"
+	shelfName     = "Shelf"
+	tagSour       = "sour"
+	tagGift       = "gift"
 )
 
 // ctxWithUser returns a context containing a minimal authenticated user with the given ID.
@@ -36,6 +52,7 @@ func ownedCellar() *model.Cellar {
 type CellarTestSuite struct {
 	suite.Suite
 	cellarRepo   *mocks.CellarRepository
+	beerRepo     *mocks.BeerRepository
 	activityRepo *mocks.ActivityRepository
 	service      *server.CellarServer
 	observedLogs *observer.ObservedLogs
@@ -47,11 +64,12 @@ func TestCellarTestSuite(t *testing.T) {
 
 func (suite *CellarTestSuite) SetupTest() {
 	suite.cellarRepo = mocks.NewCellarRepository(suite.T())
+	suite.beerRepo = mocks.NewBeerRepository(suite.T())
 	suite.activityRepo = mocks.NewActivityRepository(suite.T())
 	observedZapCore, observedLogs := observer.New(zap.InfoLevel)
 	suite.observedLogs = observedLogs
 	observedLogger := zap.New(observedZapCore)
-	suite.service = server.NewCellarServer(suite.cellarRepo, nil, suite.activityRepo, observedLogger)
+	suite.service = server.NewCellarServer(suite.cellarRepo, suite.beerRepo, suite.activityRepo, observedLogger)
 }
 
 func (suite *CellarTestSuite) TestCreateAdventCalendar_ErrorMissingFilters() {
@@ -651,4 +669,492 @@ func (suite *CellarTestSuite) TestAddCellarBeer_CreatesActivity() {
 
 	suite.Require().NoError(err)
 	suite.NotNil(resp.Msg.Beer)
+}
+
+func ctxWithFullUser(userUUID uuid.UUID) (context.Context, *model.User) {
+	user := &model.User{
+		Model:           gorm.Model{ID: 1},
+		UUID:            userUUID,
+		Username:        bobName,
+		Email:           bobEmail,
+		UntappdUserName: pointy.String(bobUntappd),
+	}
+
+	return context.WithValue(context.Background(), auth.UserKey{}, user), user
+}
+
+func (suite *CellarTestSuite) TestAddCellar_Success() {
+	ownerUUID := uuid.New()
+	ctx, user := ctxWithFullUser(ownerUUID)
+
+	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "Cool and dark", []string{fridgeName, shelfName}, *user).Return(&model.Cellar{
+		Model: gorm.Model{ID: 7},
+		Locations: []model.LocationInCellar{
+			{Model: gorm.Model{ID: 1}, Name: fridgeName},
+			{Model: gorm.Model{ID: 2}, Name: shelfName},
+		},
+	}, nil)
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{
+		OwnerUuid:   ownerUUID.String(),
+		Name:        basementName,
+		Description: "Cool and dark",
+		Locations:   []string{fridgeName, shelfName},
+	}))
+
+	suite.Require().NoError(err)
+	cellar := result.Msg.GetCellar()
+	suite.Equal(uint64(7), cellar.GetCellarId())
+	suite.Equal(basementName, cellar.GetName())
+	suite.Equal(bobName, cellar.GetOwner().GetUserName())
+	suite.Equal(bobUntappd, cellar.GetOwner().GetUntappedUsername())
+	suite.Require().Len(cellar.GetLocations(), 2)
+	suite.Equal(shelfName, cellar.GetLocations()[1].GetName())
+}
+
+func (suite *CellarTestSuite) TestAddCellar_NoUserInContext() {
+	result, err := suite.service.AddCellar(context.Background(), connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: uuid.NewString()}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_InvalidOwnerUUID() {
+	ctx, _ := ctxWithFullUser(uuid.New())
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: "not-a-uuid"}))
+
+	suite.Require().Error(err)
+	suite.Equal(connect.CodeInvalidArgument, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_OwnerUUIDMismatch() {
+	ctx, _ := ctxWithFullUser(uuid.New())
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: uuid.NewString()}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellar_RepositoryError() {
+	ownerUUID := uuid.New()
+	ctx, user := ctxWithFullUser(ownerUUID)
+	suite.cellarRepo.EXPECT().AddCellar(ctx, basementName, "", []string(nil), *user).Return(nil, errors.New("duplicate cellar"))
+
+	result, err := suite.service.AddCellar(ctx, connect.NewRequest(&apiv1.AddCellarRequest{OwnerUuid: ownerUUID.String(), Name: basementName}))
+
+	suite.Require().ErrorContains(err, "duplicate cellar")
+	suite.Nil(result)
+}
+
+// captureAddedEntry stubs the cellar ownership check and the save, returning a pointer that is
+// populated with the entry (and timestamp) the handler passed to AddBeerToCellarWithActivity.
+func (suite *CellarTestSuite) captureAddedEntry(ctx context.Context) (*model.CellarEntry, *time.Time) {
+	var (
+		captured   model.CellarEntry
+		capturedAt time.Time
+	)
+
+	saved := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}
+
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx,
+		mock.MatchedBy(func(entry model.CellarEntry) bool {
+			captured = entry
+
+			return true
+		}),
+		mock.MatchedBy(func(occurredAt time.Time) bool {
+			capturedAt = occurredAt
+
+			return true
+		}),
+	).Return(saved, nil)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(saved, nil)
+
+	return &captured, &capturedAt
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_MapsAllOptionalFields() {
+	ctx := ctxWithUser(1)
+	captured, capturedAt := suite.captureAddedEntry(ctx)
+	drinkBefore := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	cellarUntil := time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC)
+	dateAdded := time.Date(2025, 3, 4, 0, 0, 0, 0, time.UTC)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId:    1,
+		BeerId:      5,
+		LocationId:  3,
+		Quantity:    6,
+		FormatId:    pointy.Uint64(2),
+		Vintage:     pointy.Uint64(2020),
+		HadBefore:   true,
+		Special:     true,
+		DrinkBefore: timestamppb.New(drinkBefore),
+		CellarUntil: timestamppb.New(cellarUntil),
+		DateAdded:   timestamppb.New(dateAdded),
+	}))
+
+	suite.Require().NoError(err)
+	suite.Equal(uint(5), captured.BeerID)
+	suite.Equal(int64(6), captured.Quantity)
+	suite.Require().NotNil(captured.LocationID)
+	suite.Equal(uint(3), *captured.LocationID)
+	suite.Require().NotNil(captured.FormatID)
+	suite.Equal(uint(2), *captured.FormatID)
+	suite.Require().NotNil(captured.Vintage)
+	suite.Equal(uint64(2020), *captured.Vintage)
+	suite.True(captured.HadBefore)
+	suite.True(captured.Special)
+	suite.Equal(drinkBefore, *captured.DrinkBefore)
+	suite.Equal(cellarUntil, *captured.CellarUntil)
+	suite.Equal(dateAdded, *captured.DateAdded)
+	suite.Equal(dateAdded, *capturedAt, "activity timestamp should be the supplied date_added")
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_UnsetOptionalsStayNil() {
+	ctx := ctxWithUser(1)
+	captured, capturedAt := suite.captureAddedEntry(ctx)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().NoError(err)
+	suite.Nil(captured.LocationID, "location_id 0 means 'none', not a FK to row 0")
+	suite.Nil(captured.FormatID)
+	suite.Nil(captured.Vintage)
+	suite.Nil(captured.DateAdded)
+	suite.Nil(captured.DrinkBefore)
+	suite.Nil(captured.CellarUntil)
+	suite.WithinDuration(time.Now().UTC(), *capturedAt, 5*time.Second)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_ReusesExistingTagsAndCreatesNewOnes() {
+	ctx := ctxWithUser(1)
+	captured, _ := suite.captureAddedEntry(ctx)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagSour, tagGift}).
+		Return(map[string]model.Tag{tagSour: {Model: gorm.Model{ID: 4}, Tag: tagSour}}, nil)
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId: 1, BeerId: 5, Quantity: 1, Tags: []string{tagSour, tagGift},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(captured.Tags, 2)
+	suite.Equal(uint(4), captured.Tags[0].ID)
+	suite.Equal(tagGift, captured.Tags[1].Tag)
+	suite.Zero(captured.Tags[1].ID)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_TagLookupErrorFallsBackToNewTags() {
+	ctx := ctxWithUser(1)
+	captured, _ := suite.captureAddedEntry(ctx)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagSour}).Return(nil, errors.New(dbDownMessage))
+
+	_, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{
+		CellarId: 1, BeerId: 5, Quantity: 1, Tags: []string{tagSour},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().Len(captured.Tags, 1)
+	suite.Equal(tagSour, captured.Tags[0].Tag)
+	suite.Equal(1, suite.observedLogs.FilterMessage("error getting tags by name").Len())
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_ReloadFailureFallsBackToSavedEntry() {
+	ctx := ctxWithUser(1)
+	saved := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 2}
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx, mock.AnythingOfType("model.CellarEntry"), mock.AnythingOfType("time.Time")).Return(saved, nil)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("reload failed"))
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 2}))
+
+	suite.Require().NoError(err)
+	suite.Equal(uint64(10), result.Msg.GetBeer().GetCellarEntryId())
+	suite.Equal(1, suite.observedLogs.FilterMessage("error loading cellar entry after saving").Len())
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_SaveError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().AddBeerToCellarWithActivity(ctx, mock.AnythingOfType("model.CellarEntry"), mock.AnythingOfType("time.Time")).Return(nil, errors.New("fk violation"))
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().ErrorContains(err, "fk violation")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAddCellarBeer_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.AddCellarBeer(ctx, connect.NewRequest(&apiv1.AddCellarBeerRequest{CellarId: 1, BeerId: 5, Quantity: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestRequireOwner_NoUserInContext() {
+	result, err := suite.service.GetCellar(context.Background(), connect.NewRequest(&apiv1.GetCellarRequest{CellarId: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Equal(connect.CodePermissionDenied, connect.CodeOf(err))
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestRequireOwner_RepositoryErrorPropagates() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellar(ctx, connect.NewRequest(&apiv1.GetCellarRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Require().NotErrorIs(err, server.ErrCellarNotFound)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarList_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarsForUser(ctx, model.User{Model: gorm.Model{ID: 1}}).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellarList(ctx, connect.NewRequest(&apiv1.GetCellarListRequest{}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarEntry_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("entry not found"))
+
+	result, err := suite.service.GetCellarEntry(ctx, connect.NewRequest(&apiv1.GetCellarEntryRequest{CellarEntryId: 10}))
+
+	suite.Require().Error(err)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarEntry_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.GetCellarEntry(ctx, connect.NewRequest(&apiv1.GetCellarEntryRequest{CellarEntryId: 10}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarStats_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarStats(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.GetCellarStats(ctx, connect.NewRequest(&apiv1.GetCellarStatsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestListCellarBeers_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBeers(ctx, uint(1)).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.ListCellarBeers(ctx, connect.NewRequest(&apiv1.ListCellarBeersRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_EntryLookupError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(nil, errors.New("entry not found"))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10}))
+
+	suite.Require().Error(err)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_NotOwner() {
+	ctx := ctxWithUser(2)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(0)}))
+
+	suite.Require().ErrorIs(err, server.ErrNotAuthorized)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_DeleteError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().DeleteCellarEntry(ctx, uint(10)).Return(errors.New(dbDownMessage))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(0)}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_UpdateError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(&model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1}, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, mock.Anything).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10, Quantity: pointy.Int64(2)}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_AppliesEveryProvidedField() {
+	ctx := ctxWithUser(1)
+	existing := &model.CellarEntry{
+		Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 1,
+		Location: &model.LocationInCellar{Name: "old"}, Format: &model.BeerFormat{Package: "old"},
+	}
+	drinkBefore := time.Date(2027, 1, 2, 0, 0, 0, 0, time.UTC)
+	cellarUntil := time.Date(2026, 6, 7, 0, 0, 0, 0, time.UTC)
+	dateAdded := time.Date(2025, 3, 4, 0, 0, 0, 0, time.UTC)
+
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(existing, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.beerRepo.EXPECT().GetTagsByNames(ctx, []string{tagGift}).Return(map[string]model.Tag{}, nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, existing).Return(existing, nil) // the handler mutates the entry in place
+
+	_, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{
+		CellarEntryId: 10,
+		LocationId:    pointy.Uint64(4),
+		FormatId:      pointy.Uint64(2),
+		Vintage:       pointy.Uint64(2019),
+		Quantity:      pointy.Int64(5),
+		HadBefore:     pointy.Bool(true),
+		Special:       pointy.Bool(true),
+		DrinkBefore:   timestamppb.New(drinkBefore),
+		CellarUntil:   timestamppb.New(cellarUntil),
+		DateAdded:     timestamppb.New(dateAdded),
+		Tags:          &apiv1.Tags{Tags: []string{tagGift}},
+	}))
+
+	suite.Require().NoError(err)
+	suite.Require().NotNil(existing.LocationID)
+	suite.Equal(uint(4), *existing.LocationID)
+	suite.Nil(existing.Location, "stale preloaded location must be cleared")
+	suite.Require().NotNil(existing.FormatID)
+	suite.Equal(uint(2), *existing.FormatID)
+	suite.Nil(existing.Format, "stale preloaded format must be cleared")
+	suite.Require().NotNil(existing.Vintage)
+	suite.Equal(uint64(2019), *existing.Vintage)
+	suite.Equal(int64(5), existing.Quantity)
+	suite.True(existing.HadBefore)
+	suite.True(existing.Special)
+	suite.True(existing.DrinkBefore.Equal(drinkBefore))
+	suite.True(existing.CellarUntil.Equal(cellarUntil))
+	suite.True(existing.DateAdded.Equal(dateAdded))
+	suite.Require().Len(existing.Tags, 1)
+	suite.Equal(tagGift, existing.Tags[0].Tag)
+}
+
+func (suite *CellarTestSuite) TestUpdateBeer_UnsetFieldsAreLeftAlone() {
+	ctx := ctxWithUser(1)
+	vintage := uint64(2018)
+	existing := &model.CellarEntry{Model: gorm.Model{ID: 10}, CellarID: 1, Quantity: 3, Vintage: &vintage, HadBefore: true, Special: true}
+
+	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(existing, nil)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().UpdateCellarEntry(ctx, existing).Return(existing, nil)
+
+	_, err := suite.service.UpdateBeer(ctx, connect.NewRequest(&apiv1.UpdateBeerRequest{CellarEntryId: 10}))
+
+	suite.Require().NoError(err)
+	suite.Equal(int64(3), existing.Quantity)
+	suite.Equal(uint64(2018), *existing.Vintage)
+	suite.True(existing.HadBefore)
+	suite.True(existing.Special)
+	suite.Nil(existing.Tags)
+}
+
+func (suite *CellarTestSuite) TestRecommendBeer_RepositoryError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().FindBeerRecommendations(ctx, uint64(1), mock.Anything).Return(nil, errors.New(dbDownMessage))
+
+	result, err := suite.service.RecommendBeer(ctx, connect.NewRequest(&apiv1.RecommendBeerRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, dbDownMessage)
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_BreweriesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, errors.New("breweries failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "breweries failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_StylesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarStyles(ctx, uint64(1)).Return(nil, errors.New("styles failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "styles failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestGetCellarRecommendationParams_RangesError() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetCellarBreweryNames(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarStyles(ctx, uint64(1)).Return(nil, nil)
+	suite.cellarRepo.EXPECT().GetCellarRecommendationRanges(ctx, uint64(1)).Return(nil, errors.New("ranges failed"))
+
+	result, err := suite.service.GetCellarRecommendationParams(ctx, connect.NewRequest(&apiv1.GetCellarRecommendationParamsRequest{CellarId: 1}))
+
+	suite.Require().ErrorContains(err, "ranges failed")
+	suite.Nil(result)
+}
+
+func (suite *CellarTestSuite) TestAdventCalendar_RepositoryErrors() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil).Times(3)
+	suite.cellarRepo.EXPECT().UpdateAdventCalendar(ctx, uint64(1), uint64(2), mock.Anything).Return(errors.New("update failed"))
+	suite.cellarRepo.EXPECT().DeleteAdventCalendar(ctx, uint64(1), uint64(2)).Return(errors.New("delete failed"))
+	suite.cellarRepo.EXPECT().GetAdventCalendarByID(ctx, uint64(1), uint64(2)).Return(nil, errors.New("get failed"))
+
+	_, err := suite.service.UpdateAdventCalendar(ctx, connect.NewRequest(&apiv1.UpdateAdventCalendarRequest{CellarId: 1, Id: 2, RevealDay: timestamppb.Now()}))
+	suite.Require().ErrorContains(err, "update failed")
+
+	_, err = suite.service.DeleteAdventCalendar(ctx, connect.NewRequest(&apiv1.DeleteAdventCalendarRequest{CellarId: 1, Id: 2}))
+	suite.Require().ErrorContains(err, "delete failed")
+
+	_, err = suite.service.GetAdventCalendar(ctx, connect.NewRequest(&apiv1.GetAdventCalendarRequest{CellarId: 1, Criteria: &apiv1.GetAdventCalendarRequest_Id{Id: 2}}))
+	suite.Require().ErrorContains(err, "get failed")
+}
+
+func (suite *CellarTestSuite) TestRegenerateAdventCalendarDay_MissingDay() {
+	ctx := ctxWithUser(1)
+	suite.cellarRepo.EXPECT().GetCellarByID(ctx, uint(1)).Return(ownedCellar(), nil)
+	suite.cellarRepo.EXPECT().GetAdventCalendarByID(ctx, uint64(1), uint64(1)).Return(&model.AdventCalendar{Model: gorm.Model{ID: 1}}, nil)
+
+	result, err := suite.service.RegenerateAdventCalendarDay(ctx, connect.NewRequest(&apiv1.RegenerateAdventCalendarDayRequest{CellarId: 1, AdventCalendarId: 1}))
+
+	suite.Require().ErrorIs(err, server.ErrInvalidInput)
+	suite.Nil(result)
 }
