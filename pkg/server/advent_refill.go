@@ -20,6 +20,15 @@ func (c *CellarServer) startAdventRefill(ctx context.Context, cellarID uint64, e
 	detached := context.WithoutCancel(ctx)
 
 	c.wg.Go(func() {
+		// net/http recovers handler panics but not panics in goroutines a handler starts, so an
+		// unrecovered panic here would take down the whole server.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				c.logger.Error("advent calendar refill panicked",
+					zap.Uint64("cellar_id", cellarID), zap.Uint64("cellar_entry_id", entryID), zap.Any("panic", recovered))
+			}
+		}()
+
 		refillCtx, cancel := context.WithTimeout(detached, adventRefillTimeout)
 		defer cancel()
 

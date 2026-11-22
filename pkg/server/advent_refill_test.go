@@ -199,3 +199,21 @@ func (suite *ActivityTestSuite) TestRecordConsumption_RefillSurvivesRequestCance
 
 	suite.NoError(backgroundCtxErr)
 }
+
+func (suite *ActivityTestSuite) TestRecordConsumption_RefillPanicIsRecovered() {
+	ctx := ctxWithUser(1)
+	service, logs := suite.observedService()
+
+	suite.expectConsumption(ctx, 1)
+	suite.cellarRepo.EXPECT().
+		FindFutureAdventCalendarBeersForEntry(mock.Anything, uint64(refillCellarID), uint64(consumedEntryID), todayUTCMatcher()).
+		RunAndReturn(func(context.Context, uint64, uint64, time.Time) ([]model.AdventCalendarBeer, error) {
+			panic("boom")
+		})
+
+	_, err := consume(ctx, service)
+	service.Wait()
+
+	suite.Require().NoError(err)
+	suite.Equal(1, logs.FilterLevelExact(zapcore.ErrorLevel).FilterMessageSnippet("panicked").Len())
+}
