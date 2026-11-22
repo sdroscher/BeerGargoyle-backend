@@ -34,11 +34,11 @@ func (suite *BeerTestSuite) TestAddBeer_AddsBeer() {
 		Description:    "Peach Saison with Brett",
 		BreweryID:      10,
 		StyleID:        2,
-		ABV:            pointy.Float64(8.2),
+		ABV:            new(8.2),
 		IBU:            pointy.Uint64(18),
-		ExternalSource: pointy.String("untappd-web"),
+		ExternalSource: new("untappd-web"),
 		ExternalID:     pointy.Uint64(4557393),
-		ExternalRating: pointy.Float64(4.0),
+		ExternalRating: new(4.0),
 	}
 	result, err := suite.repository.AddBeer(context.Background(), beer)
 	suite.Require().NoError(err)

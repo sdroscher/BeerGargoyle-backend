@@ -367,16 +367,16 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FindsRecommendations()
 
 	filter := api.CellarFilter{
 		BreweryId:       pointy.Uint64(1),
-		MinimumAbv:      pointy.Float64(4.0),
-		MaximumAbv:      pointy.Float64(20.0),
-		MinimumRating:   pointy.Float64(3.5),
-		MaximumRating:   pointy.Float64(5.0),
+		MinimumAbv:      new(4.0),
+		MaximumAbv:      new(20.0),
+		MinimumRating:   new(3.5),
+		MaximumRating:   new(5.0),
 		MinimumSize:     pointy.Int64(330),
 		MaximumSize:     pointy.Int64(375),
-		Special:         pointy.Bool(false),
-		HadBefore:       pointy.Bool(false),
+		Special:         new(false),
+		HadBefore:       new(false),
 		StyleId:         pointy.Uint64(1),
-		OverdueToDrink:  pointy.Bool(false),
+		OverdueToDrink:  new(false),
 		MinimumQuantity: pointy.Int64(1),
 		MinimumVintage:  pointy.Uint64(2011),
 		MaximumVintage:  pointy.Uint64(2020),
@@ -416,7 +416,7 @@ func (suite *CellarTestSuite) TestFindBeerRecommendations_FiltersByBJCPStyleIDAn
 		WithArgs(20, 21).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	filter := api.CellarFilter{
-		BjcpStyleId:   pointy.String("21A"),
+		BjcpStyleId:   new("21A"),
 		StyleFamilyId: pointy.Uint64(3),
 	}
 
@@ -503,7 +503,7 @@ func (suite *CellarTestSuite) TestSaveAdventCalendar() {
 				Day:           startDate,
 				Revealed:      false,
 				Filter: model.AdventCalendarFilter{
-					MaximumRating: pointy.Float64(6.5),
+					MaximumRating: new(6.5),
 				},
 			},
 		},

@@ -3,7 +3,6 @@ package grpc
 import (
 	"fmt"
 
-	"go.openly.dev/pointy"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	api "droscher.com/BeerGargoyle/generated/grpc/api/v1"
@@ -34,15 +33,15 @@ func BeerFromModel(beer model.Beer) *api.Beer {
 	}
 
 	if beer.Brewery.ExternalID != nil {
-		brewery.ExternalId = pointy.Uint64(*beer.Brewery.ExternalID)
+		brewery.ExternalId = new(*beer.Brewery.ExternalID)
 	}
 
 	if beer.Brewery.ExternalSource != nil {
-		brewery.ExternalSource = pointy.String(*beer.Brewery.ExternalSource)
+		brewery.ExternalSource = new(*beer.Brewery.ExternalSource)
 	}
 
 	if beer.Brewery.ExternalRating != nil {
-		brewery.ExternalRating = pointy.Float64(*beer.Brewery.ExternalRating)
+		brewery.ExternalRating = new(*beer.Brewery.ExternalRating)
 	}
 
 	pbBeer := api.Beer{
@@ -50,7 +49,7 @@ func BeerFromModel(beer model.Beer) *api.Beer {
 		Name:        beer.Name,
 		Description: beer.Description,
 		Style:       BeerStyleFromModel(beer.Style),
-		ImageUrl:    pointy.String(beer.ImageURL),
+		ImageUrl:    new(beer.ImageURL),
 		Brewery:     &brewery,
 	}
 
@@ -59,19 +58,19 @@ func BeerFromModel(beer model.Beer) *api.Beer {
 	}
 
 	if beer.IBU != nil {
-		pbBeer.Ibu = pointy.Uint64(*beer.IBU)
+		pbBeer.Ibu = new(*beer.IBU)
 	}
 
 	if beer.ExternalID != nil {
-		pbBeer.ExternalId = pointy.Uint64(*beer.ExternalID)
+		pbBeer.ExternalId = new(*beer.ExternalID)
 	}
 
 	if beer.ExternalSource != nil {
-		pbBeer.ExternalSource = pointy.String(*beer.ExternalSource)
+		pbBeer.ExternalSource = new(*beer.ExternalSource)
 	}
 
 	if beer.ExternalRating != nil {
-		pbBeer.ExternalRating = pointy.Float64(*beer.ExternalRating)
+		pbBeer.ExternalRating = new(*beer.ExternalRating)
 	}
 
 	return &pbBeer
@@ -97,7 +96,7 @@ func BeerToModel(pbBeer *api.Beer) model.Beer {
 	beer := model.Beer{
 		Name:        pbBeer.Name,
 		Description: pbBeer.Description,
-		ABV:         pointy.Float64(pbBeer.Abv),
+		ABV:         new(pbBeer.Abv),
 	}
 
 	if pbBeer.ImageUrl != nil {
@@ -105,19 +104,19 @@ func BeerToModel(pbBeer *api.Beer) model.Beer {
 	}
 
 	if pbBeer.Ibu != nil {
-		beer.IBU = pointy.Uint64(*pbBeer.Ibu)
+		beer.IBU = new(*pbBeer.Ibu)
 	}
 
 	if pbBeer.ExternalId != nil {
-		beer.ExternalID = pointy.Uint64(*pbBeer.ExternalId)
+		beer.ExternalID = new(*pbBeer.ExternalId)
 	}
 
 	if pbBeer.ExternalSource != nil {
-		beer.ExternalSource = pointy.String(*pbBeer.ExternalSource)
+		beer.ExternalSource = new(*pbBeer.ExternalSource)
 	}
 
 	if pbBeer.ExternalRating != nil {
-		beer.ExternalRating = pointy.Float64(*pbBeer.ExternalRating)
+		beer.ExternalRating = new(*pbBeer.ExternalRating)
 	}
 
 	return beer
@@ -135,15 +134,15 @@ func BreweryToModel(pbBrewery *api.Brewery) model.Brewery {
 	}
 
 	if pbBrewery.ExternalId != nil {
-		brewery.ExternalID = pointy.Uint64(*pbBrewery.ExternalId)
+		brewery.ExternalID = new(*pbBrewery.ExternalId)
 	}
 
 	if pbBrewery.ExternalSource != nil {
-		brewery.ExternalSource = pointy.String(*pbBrewery.ExternalSource)
+		brewery.ExternalSource = new(*pbBrewery.ExternalSource)
 	}
 
 	if pbBrewery.ExternalRating != nil {
-		brewery.ExternalRating = pointy.Float64(*pbBrewery.ExternalRating)
+		brewery.ExternalRating = new(*pbBrewery.ExternalRating)
 	}
 
 	return brewery
@@ -158,59 +157,59 @@ func CellarFilterToModel(pbFilter *api.CellarFilter) model.AdventCalendarFilter 
 	}
 
 	if pbFilter.BreweryId != nil {
-		filter.BreweryID = pointy.Uint64(pbFilter.GetBreweryId())
+		filter.BreweryID = new(pbFilter.GetBreweryId())
 	}
 
 	if pbFilter.MinimumAbv != nil {
-		filter.MinimumAbv = pointy.Float64(pbFilter.GetMinimumAbv())
+		filter.MinimumAbv = new(pbFilter.GetMinimumAbv())
 	}
 
 	if pbFilter.MaximumAbv != nil {
-		filter.MaximumAbv = pointy.Float64(pbFilter.GetMaximumAbv())
+		filter.MaximumAbv = new(pbFilter.GetMaximumAbv())
 	}
 
 	if pbFilter.StyleId != nil {
-		filter.StyleID = pointy.Uint64(pbFilter.GetStyleId())
+		filter.StyleID = new(pbFilter.GetStyleId())
 	}
 
 	if pbFilter.MinimumVintage != nil {
-		filter.MinimumVintage = pointy.Uint64(pbFilter.GetMinimumVintage())
+		filter.MinimumVintage = new(pbFilter.GetMinimumVintage())
 	}
 
 	if pbFilter.MaximumVintage != nil {
-		filter.MaximumVintage = pointy.Uint64(pbFilter.GetMaximumVintage())
+		filter.MaximumVintage = new(pbFilter.GetMaximumVintage())
 	}
 
 	if pbFilter.OverdueToDrink != nil {
-		filter.OverdueToDrink = pointy.Bool(pbFilter.GetOverdueToDrink())
+		filter.OverdueToDrink = new(pbFilter.GetOverdueToDrink())
 	}
 
 	if pbFilter.HadBefore != nil {
-		filter.HadBefore = pointy.Bool(pbFilter.GetHadBefore())
+		filter.HadBefore = new(pbFilter.GetHadBefore())
 	}
 
 	if pbFilter.Special != nil {
-		filter.Special = pointy.Bool(pbFilter.GetSpecial())
+		filter.Special = new(pbFilter.GetSpecial())
 	}
 
 	if pbFilter.MinimumQuantity != nil {
-		filter.MinimumQuantity = pointy.Int64(pbFilter.GetMinimumQuantity())
+		filter.MinimumQuantity = new(pbFilter.GetMinimumQuantity())
 	}
 
 	if pbFilter.MinimumSize != nil {
-		filter.MinimumSize = pointy.Int64(pbFilter.GetMinimumSize())
+		filter.MinimumSize = new(pbFilter.GetMinimumSize())
 	}
 
 	if pbFilter.MaximumSize != nil {
-		filter.MaximumSize = pointy.Int64(pbFilter.GetMaximumSize())
+		filter.MaximumSize = new(pbFilter.GetMaximumSize())
 	}
 
 	if pbFilter.MinimumRating != nil {
-		filter.MinimumRating = pointy.Float64(pbFilter.GetMinimumRating())
+		filter.MinimumRating = new(pbFilter.GetMinimumRating())
 	}
 
 	if pbFilter.MaximumRating != nil {
-		filter.MaximumRating = pointy.Float64(pbFilter.GetMaximumRating())
+		filter.MaximumRating = new(pbFilter.GetMaximumRating())
 	}
 
 	if pbFilter.AddedBefore != nil {
@@ -291,7 +290,7 @@ func CellarBeerFromModel(cellarEntry *model.CellarEntry) *api.CellarBeer {
 	}
 
 	if cellarEntry.Vintage != nil {
-		cellarBeer.Vintage = pointy.Uint64(*cellarEntry.Vintage)
+		cellarBeer.Vintage = new(*cellarEntry.Vintage)
 	}
 
 	if cellarEntry.DateAdded != nil {
@@ -330,7 +329,7 @@ func UserFromModel(user model.User) *api.User {
 	}
 
 	if user.UntappdUserName != nil {
-		pbUser.UntappedUsername = pointy.String(*user.UntappdUserName)
+		pbUser.UntappedUsername = new(*user.UntappdUserName)
 	}
 
 	return &pbUser
@@ -435,59 +434,59 @@ func CellarFilterFromModel(filter *model.AdventCalendarFilter) *api.CellarFilter
 	}
 
 	if filter.BreweryID != nil {
-		pbFilter.BreweryId = pointy.Uint64(*filter.BreweryID)
+		pbFilter.BreweryId = new(*filter.BreweryID)
 	}
 
 	if filter.MinimumAbv != nil {
-		pbFilter.MinimumAbv = pointy.Float64(*filter.MinimumAbv)
+		pbFilter.MinimumAbv = new(*filter.MinimumAbv)
 	}
 
 	if filter.MaximumAbv != nil {
-		pbFilter.MaximumAbv = pointy.Float64(*filter.MaximumAbv)
+		pbFilter.MaximumAbv = new(*filter.MaximumAbv)
 	}
 
 	if filter.StyleID != nil {
-		pbFilter.StyleId = pointy.Uint64(*filter.StyleID)
+		pbFilter.StyleId = new(*filter.StyleID)
 	}
 
 	if filter.MinimumVintage != nil {
-		pbFilter.MinimumVintage = pointy.Uint64(*filter.MinimumVintage)
+		pbFilter.MinimumVintage = new(*filter.MinimumVintage)
 	}
 
 	if filter.MaximumVintage != nil {
-		pbFilter.MaximumVintage = pointy.Uint64(*filter.MaximumVintage)
+		pbFilter.MaximumVintage = new(*filter.MaximumVintage)
 	}
 
 	if filter.OverdueToDrink != nil {
-		pbFilter.OverdueToDrink = pointy.Bool(*filter.OverdueToDrink)
+		pbFilter.OverdueToDrink = new(*filter.OverdueToDrink)
 	}
 
 	if filter.HadBefore != nil {
-		pbFilter.HadBefore = pointy.Bool(*filter.HadBefore)
+		pbFilter.HadBefore = new(*filter.HadBefore)
 	}
 
 	if filter.Special != nil {
-		pbFilter.Special = pointy.Bool(*filter.Special)
+		pbFilter.Special = new(*filter.Special)
 	}
 
 	if filter.MinimumQuantity != nil {
-		pbFilter.MinimumQuantity = pointy.Int64(*filter.MinimumQuantity)
+		pbFilter.MinimumQuantity = new(*filter.MinimumQuantity)
 	}
 
 	if filter.MinimumSize != nil {
-		pbFilter.MinimumSize = pointy.Int64(*filter.MinimumSize)
+		pbFilter.MinimumSize = new(*filter.MinimumSize)
 	}
 
 	if filter.MaximumSize != nil {
-		pbFilter.MaximumSize = pointy.Int64(*filter.MaximumSize)
+		pbFilter.MaximumSize = new(*filter.MaximumSize)
 	}
 
 	if filter.MinimumRating != nil {
-		pbFilter.MinimumRating = pointy.Float64(*filter.MinimumRating)
+		pbFilter.MinimumRating = new(*filter.MinimumRating)
 	}
 
 	if filter.MaximumRating != nil {
-		pbFilter.MaximumRating = pointy.Float64(*filter.MaximumRating)
+		pbFilter.MaximumRating = new(*filter.MaximumRating)
 	}
 
 	if filter.AddedBefore != nil {

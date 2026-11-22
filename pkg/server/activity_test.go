@@ -334,7 +334,7 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_Success() {
 	ctx := ctxWithUser(1)
 
 	extID := uint64(14534)
-	beer := model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF", ExternalID: &extID, ExternalSource: strPtr("untappd"), Brewery: model.Brewery{Name: "Boombox"}}
+	beer := model.Beer{Model: gorm.Model{ID: 5}, Name: "Juicy AF", ExternalID: &extID, ExternalSource: new("untappd"), Brewery: model.Brewery{Name: "Boombox"}}
 	entryID := uint(10)
 	entries := []*model.CellarEntry{
 		{Model: gorm.Model{ID: entryID}, CellarID: 1, BeerID: 5, Beer: beer},
@@ -450,14 +450,12 @@ func (suite *ActivityTestSuite) TestImportUntappdCheckins_MatchesByNameFallback(
 	suite.Equal(uint(20), *capturedActivities[0].CellarEntryID)
 }
 
-func strPtr(s string) *string { return &s }
-
 func (suite *ActivityTestSuite) TestImportUntappdCheckins_WithBOM() {
 	ctx := ctxWithUser(1)
 	state := &model.UntappdImportState{CellarID: 1, LastImportAt: time.Time{}}
 
 	extID := uint64(22222)
-	beer := model.Beer{Model: gorm.Model{ID: 3}, Name: "Some Beer", ExternalID: &extID, ExternalSource: strPtr("untappd"), Brewery: model.Brewery{Name: "Brewery"}}
+	beer := model.Beer{Model: gorm.Model{ID: 3}, Name: "Some Beer", ExternalID: &extID, ExternalSource: new("untappd"), Brewery: model.Brewery{Name: "Brewery"}}
 	entries := []*model.CellarEntry{
 		{Model: gorm.Model{ID: 99}, CellarID: 1, BeerID: 3, Beer: beer},
 	}

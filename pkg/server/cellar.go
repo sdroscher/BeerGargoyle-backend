@@ -10,7 +10,6 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"github.com/google/uuid"
-	"go.openly.dev/pointy"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
@@ -96,7 +95,7 @@ func (c *CellarServer) AddCellar(ctx context.Context, request *connect.Request[a
 	}
 
 	if user.UntappdUserName != nil {
-		owner.UntappedUsername = pointy.String(*user.UntappdUserName)
+		owner.UntappedUsername = new(*user.UntappdUserName)
 	}
 
 	cellar, err := c.cellarRepository.AddCellar(ctx, request.Msg.GetName(), request.Msg.GetDescription(), request.Msg.GetLocations(), *user)
@@ -165,7 +164,7 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	}
 
 	if request.Msg.GetLocationId() != 0 {
-		beer.LocationID = pointy.Uint(uint(request.Msg.GetLocationId()))
+		beer.LocationID = new(uint(request.Msg.GetLocationId()))
 	}
 
 	if request.Msg.GetDrinkBefore() != nil {
@@ -179,11 +178,11 @@ func (c *CellarServer) AddCellarBeer(ctx context.Context, request *connect.Reque
 	}
 
 	if request.Msg.GetFormatId() != 0 {
-		beer.FormatID = pointy.Uint(uint(request.Msg.GetFormatId()))
+		beer.FormatID = new(uint(request.Msg.GetFormatId()))
 	}
 
 	if request.Msg.GetVintage() != 0 {
-		beer.Vintage = pointy.Uint64(request.Msg.GetVintage())
+		beer.Vintage = new(request.Msg.GetVintage())
 	}
 
 	if request.Msg.GetDateAdded() != nil {
@@ -320,12 +319,12 @@ func (c *CellarServer) UpdateBeer(ctx context.Context, request *connect.Request[
 
 func (c *CellarServer) updateCellarEntry(ctx context.Context, request *connect.Request[api.UpdateBeerRequest], cellarEntry *model.CellarEntry) {
 	if request.Msg.GetLocationId() != 0 {
-		cellarEntry.LocationID = pointy.Uint(uint(request.Msg.GetLocationId()))
+		cellarEntry.LocationID = new(uint(request.Msg.GetLocationId()))
 		cellarEntry.Location = nil
 	}
 
 	if request.Msg.GetVintage() != 0 {
-		cellarEntry.Vintage = pointy.Uint64(request.Msg.GetVintage())
+		cellarEntry.Vintage = new(request.Msg.GetVintage())
 	}
 
 	if request.Msg.Quantity != nil {
@@ -333,7 +332,7 @@ func (c *CellarServer) updateCellarEntry(ctx context.Context, request *connect.R
 	}
 
 	if request.Msg.GetFormatId() != 0 {
-		cellarEntry.FormatID = pointy.Uint(uint(request.Msg.GetFormatId()))
+		cellarEntry.FormatID = new(uint(request.Msg.GetFormatId()))
 		cellarEntry.Format = nil
 	}
 

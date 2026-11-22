@@ -358,7 +358,7 @@ func (suite *CellarTestSuite) TestUpdateBeer_Success() {
 		CellarEntryId: 10,
 		Quantity:      pointy.Int64(3),
 		Vintage:       pointy.Uint64(2021),
-		HadBefore:     pointy.Bool(true),
+		HadBefore:     new(true),
 	}
 
 	suite.cellarRepo.EXPECT().GetCellarEntryByID(ctx, uint(10)).Return(existingEntry, nil)
@@ -377,7 +377,7 @@ func (suite *CellarTestSuite) TestUpdateBeer_Success() {
 
 func (suite *CellarTestSuite) TestRecommendBeer_Success() {
 	ctx := ctxWithUser(1)
-	filter := &apiv1.CellarFilter{MinimumAbv: pointy.Float64(5.0)}
+	filter := &apiv1.CellarFilter{MinimumAbv: new(5.0)}
 	candidates := []*model.CellarEntry{
 		{Model: gorm.Model{ID: 1}, CellarID: 1, BeerID: 100},
 		{Model: gorm.Model{ID: 2}, CellarID: 1, BeerID: 200},
@@ -401,7 +401,7 @@ func (suite *CellarTestSuite) TestRecommendBeer_Success() {
 
 func (suite *CellarTestSuite) TestRecommendBeer_NoCandidates() {
 	ctx := ctxWithUser(1)
-	filter := &apiv1.CellarFilter{MinimumAbv: pointy.Float64(20.0)}
+	filter := &apiv1.CellarFilter{MinimumAbv: new(20.0)}
 
 	request := &apiv1.RecommendBeerRequest{
 		CellarId: 1,
@@ -610,7 +610,7 @@ func (suite *CellarTestSuite) TestRegenerateAdventCalendarDay_Success() {
 
 	filter := &model.AdventCalendarFilter{
 		Model:      gorm.Model{ID: 1},
-		MinimumAbv: pointy.Float64(5.0),
+		MinimumAbv: new(5.0),
 	}
 
 	candidates := []*model.CellarEntry{
@@ -677,7 +677,7 @@ func ctxWithFullUser(userUUID uuid.UUID) (context.Context, *model.User) {
 		UUID:            userUUID,
 		Username:        bobName,
 		Email:           bobEmail,
-		UntappdUserName: pointy.String(bobUntappd),
+		UntappdUserName: new(bobUntappd),
 	}
 
 	return context.WithValue(context.Background(), auth.UserKey{}, user), user
@@ -1038,8 +1038,8 @@ func (suite *CellarTestSuite) TestUpdateBeer_AppliesEveryProvidedField() {
 		FormatId:      pointy.Uint64(2),
 		Vintage:       pointy.Uint64(2019),
 		Quantity:      pointy.Int64(5),
-		HadBefore:     pointy.Bool(true),
-		Special:       pointy.Bool(true),
+		HadBefore:     new(true),
+		Special:       new(true),
 		DrinkBefore:   timestamppb.New(drinkBefore),
 		CellarUntil:   timestamppb.New(cellarUntil),
 		DateAdded:     timestamppb.New(dateAdded),
