@@ -38,6 +38,9 @@ type CellarRepository interface { //nolint:interfacebloat // this is an acceptab
 	SaveAdventCalendar(ctx context.Context, calendar model.AdventCalendar) (*model.AdventCalendar, error)
 	UpdateAdventCalendar(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time) error
 	UpdateAdventCalendarEntry(ctx context.Context, cellarID uint64, calendarID uint64, day time.Time, cellarEntryID uint64) error
+	// FindFutureAdventCalendarBeersForEntry returns the advent calendar days scheduled with the given
+	// cellar entry whose day is strictly after the given time, scoped to the cellar.
+	FindFutureAdventCalendarBeersForEntry(ctx context.Context, cellarID uint64, cellarEntryID uint64, after time.Time) ([]model.AdventCalendarBeer, error)
 	UpdateCellarEntry(ctx context.Context, entry *model.CellarEntry) (*model.CellarEntry, error)
 
 	// GetAllEntriesForCellar returns all cellar entries including soft-deleted ones, with Beer and
@@ -510,6 +513,22 @@ func (r *Repository) UpdateAdventCalendarEntry(ctx context.Context, cellarID uin
 			" AND day = ?", cellarEntryID, calendarID, cellarID, day)
 
 	return result.Error
+}
+
+func (r *Repository) FindFutureAdventCalendarBeersForEntry(ctx context.Context, cellarID uint64, cellarEntryID uint64, after time.Time) ([]model.AdventCalendarBeer, error) {
+	var beers []model.AdventCalendarBeer
+
+	result := r.DB.WithContext(ctx).
+		Joins("JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id").
+		Where("advent_calendars.cellar_id = ?", cellarID).
+		Where("advent_calendar_beers.cellar_entry_id = ?", cellarEntryID).
+		Where("advent_calendar_beers.day > ?", after).
+		Find(&beers)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return beers, nil
 }
 
 func (r *Repository) GetAllEntriesForCellar(ctx context.Context, cellarID uint) ([]*model.CellarEntry, error) {

@@ -749,3 +749,37 @@ func (suite *CellarTestSuite) TestGetAdventCalendarFilter_NotFound() {
 	suite.Require().ErrorIs(err, gorm.ErrRecordNotFound)
 	suite.Nil(filter)
 }
+
+const findFutureAdventBeersSQL = `SELECT "advent_calendar_beers"."id","advent_calendar_beers"."created_at","advent_calendar_beers"."updated_at","advent_calendar_beers"."deleted_at","advent_calendar_beers"."advent_calendar_id","advent_calendar_beers"."cellar_entry_id","advent_calendar_beers"."filter_id","advent_calendar_beers"."day","advent_calendar_beers"."revealed" FROM "advent_calendar_beers" JOIN advent_calendars ON advent_calendars.id = advent_calendar_beers.advent_calendar_id WHERE advent_calendars.cellar_id = $1 AND advent_calendar_beers.cellar_entry_id = $2 AND advent_calendar_beers.day > $3 AND "advent_calendar_beers"."deleted_at" IS NULL`
+
+func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry() {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+	day := time.Date(2026, 12, 5, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(findFutureAdventBeersSQL)).
+		WithArgs(1, 10, after).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "advent_calendar_id", "cellar_entry_id", "day"}).
+			AddRow(7, 3, 10, day))
+
+	beers, err := suite.repository.FindFutureAdventCalendarBeersForEntry(context.Background(), 1, 10, after)
+
+	suite.Require().NoError(err)
+	suite.Require().Len(beers, 1)
+	suite.Equal(uint(3), beers[0].AdventCalendarID)
+	suite.Equal(uint(10), beers[0].CellarEntryID)
+	suite.True(day.Equal(beers[0].Day))
+}
+
+func (suite *CellarTestSuite) TestFindFutureAdventCalendarBeersForEntry_Error() {
+	after := time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC)
+
+	suite.mock.ExpectQuery(regexp.QuoteMeta(findFutureAdventBeersSQL)).
+		WithArgs(1, 10, after).
+		WillReturnError(errors.New("database error"))
+
+	beers, err := suite.repository.FindFutureAdventCalendarBeersForEntry(context.Background(), 1, 10, after)
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "database error")
+	suite.Nil(beers)
+}
