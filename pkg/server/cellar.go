@@ -632,23 +632,7 @@ func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request 
 
 	day := truncateToDay(request.Msg.GetDay().AsTime())
 
-	filter, err := c.cellarRepository.GetAdventCalendarFilter(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day)
-	if err != nil {
-		return nil, err
-	}
-
-	beerMap := make(map[uint64]struct{}, len(adventCalendar.Beers))
-
-	for _, beer := range adventCalendar.Beers {
-		beerMap[uint64(beer.CellarEntryID)] = struct{}{}
-	}
-
-	recommendation, err := c.uniqueRecommendation(ctx, request.Msg.GetCellarId(), grpc.CellarFilterFromModel(filter), beerMap)
-	if err != nil {
-		return nil, err
-	}
-
-	err = c.cellarRepository.UpdateAdventCalendarEntry(ctx, request.Msg.GetCellarId(), request.Msg.GetAdventCalendarId(), day, recommendation.GetCellarEntryId())
+	recommendation, err := c.regenerateAdventDay(ctx, request.Msg.GetCellarId(), adventCalendar, day)
 	if err != nil {
 		return nil, err
 	}
@@ -660,4 +644,34 @@ func (c *CellarServer) RegenerateAdventCalendarDay(ctx context.Context, request 
 	}
 
 	return connect.NewResponse(&api.RegenerateAdventCalendarDayResponse{Beer: &beer}), nil
+}
+
+// regenerateAdventDay picks a replacement beer for one day of an advent calendar, using the filter
+// stored for that day and avoiding every beer already in the calendar, and persists it.
+// day must already be truncated to the day and calendar must have its Beers loaded.
+func (c *CellarServer) regenerateAdventDay(ctx context.Context, cellarID uint64, calendar *model.AdventCalendar, day time.Time) (*api.CellarBeer, error) {
+	calendarID := uint64(calendar.ID)
+
+	filter, err := c.cellarRepository.GetAdventCalendarFilter(ctx, cellarID, calendarID, day)
+	if err != nil {
+		return nil, err
+	}
+
+	beerMap := make(map[uint64]struct{}, len(calendar.Beers))
+
+	for _, beer := range calendar.Beers {
+		beerMap[uint64(beer.CellarEntryID)] = struct{}{}
+	}
+
+	recommendation, err := c.uniqueRecommendation(ctx, cellarID, grpc.CellarFilterFromModel(filter), beerMap)
+	if err != nil {
+		return nil, err
+	}
+
+	err = c.cellarRepository.UpdateAdventCalendarEntry(ctx, cellarID, calendarID, day, recommendation.GetCellarEntryId())
+	if err != nil {
+		return nil, err
+	}
+
+	return recommendation, nil
 }
