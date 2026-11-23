@@ -131,7 +131,28 @@ func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year in
 		return nil, err
 	}
 
+	err = r.scanHighlights(ctx, result, cellarID, yearStart, yearEnd, loc)
+	if err != nil {
+		return nil, err
+	}
+
 	return result, nil
+}
+
+func (r *Repository) scanHighlights(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time, loc *time.Location) error {
+	tallies, err := r.scanBeerTallies(ctx, cellarID, yearStart, yearEnd)
+	if err != nil {
+		return err
+	}
+
+	highlights := model.PickBeerHighlights(tallies)
+	result.MostHadBeer = highlights.MostHad
+	result.StrongestBeer = highlights.Strongest
+	result.GentlestBeer = highlights.Gentlest
+	result.HighestRatedBeer = highlights.HighestRated
+	result.LowestRatedBeer = highlights.LowestRated
+
+	return r.scanBiggestDay(ctx, result, cellarID, yearStart, yearEnd, loc)
 }
 
 func (r *Repository) scanConsumptionSummary(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time) error {
