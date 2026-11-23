@@ -1,20 +1,38 @@
 name: Publish Dart Client
 
+# Regenerates the Dart client whenever the protobuf definitions change on main
+# and publishes it as a new release of sdroscher/beergargoyle-dart-client:
+# one commit that also bumps the pubspec version, tagged vMAJOR.MINOR.PATCH.
+# The version is the newest existing tag with its patch number incremented
+# (generated API changes are additive), unless a run is started by hand with
+# a different bump or an explicit tag.
+
 on:
   push:
     branches: [ main ]
     paths: [ 'protobuf/**' ]
   workflow_dispatch:
     inputs:
+      bump:
+        description: 'Version part to increment when no explicit tag is given'
+        required: false
+        default: patch
+        type: choice
+        options: [ patch, minor, major ]
       create_tag:
-        description: 'Create version tag (e.g., v1.0.1)'
+        description: 'Explicit version tag to release instead of bumping (e.g., v1.2.0)'
         required: false
         type: string
+
+# Two releases racing would compute the same next tag.
+concurrency:
+  group: publish-dart-client
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout backend repo
       uses: actions/checkout@v6
@@ -27,22 +45,25 @@ jobs:
         repository: sdroscher/beergargoyle-dart-client
         token: ${{ secrets.DART_CLIENT_TOKEN }}
         path: dart-client
-        
+        # The next version is derived from the existing tags.
+        fetch-depth: 0
+        fetch-tags: true
+
     - name: Setup Buf
       uses: bufbuild/buf-action@v1
       with:
         input: backend/protobuf
         setup_only: true
-      
+
     - name: Generate Dart client
       run: |
         cd backend; buf generate protobuf --template buf.gen.dart.yaml --clean
-        
+
     - name: Copy generated files to dart client
       run: |
         # Copy generated files
         cp -r -v backend/dart-client/lib/* dart-client/lib/
-        
+
         # Create library export file
         cat > dart-client/lib/beergargoyle_client.dart << 'EOF'
         library beergargoyle_client;
@@ -55,30 +76,36 @@ jobs:
         export 'api/v1/user.pb.dart';
         export 'api/v1/user.pbgrpc.dart';
         EOF
-        
-    - name: Commit and push changes
+
+    - name: Commit, tag and push release
+      env:
+        # Passed through the environment, not interpolated into the script,
+        # so a crafted input cannot inject shell commands.
+        INPUT_BUMP: ${{ github.event.inputs.bump }}
+        INPUT_TAG: ${{ github.event.inputs.create_tag }}
       run: |
-        cd dart-client
-        git config user.name "GitHub Actions"
-        git config user.email "actions@github.com"
-        git add .
-        
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
+        set -euo pipefail
+
+        git -C dart-client config user.name "GitHub Actions"
+        git -C dart-client config user.email "actions@github.com"
+        git -C dart-client add .
+
+        # Nothing changed and no release was explicitly requested: no new release.
+        if git -C dart-client diff --staged --quiet && [ -z "$INPUT_TAG" ]; then
+          echo "No changes to release"
           exit 0
         fi
-        
-        git commit -m "Update generated Dart client - $(date)"
-        git push origin main
-        
-        # Create tag if requested
-        if [ -n "${{ github.event.inputs.create_tag }}" ]; then
-          TAG="${{ github.event.inputs.create_tag }}"
-          # Update version in pubspec.yaml
-          sed -i "s/version: .*/version: ${TAG#v}/" pubspec.yaml
-          git add pubspec.yaml
-          git commit -m "Bump version to ${TAG#v}"
-          git tag "$TAG"
-          git push origin "$TAG"
-          git push origin main
-        fi
+
+        TAG=$(backend/scripts/next-dart-client-tag.sh dart-client "${INPUT_BUMP:-patch}" "$INPUT_TAG")
+        echo "Releasing $TAG"
+
+        # Keep the package version in step with the tag.
+        sed -i "s/^version: .*/version: ${TAG#v}/" dart-client/pubspec.yaml
+
+        cd dart-client
+        git add .
+        git commit --allow-empty -m "Update generated Dart client - ${TAG}"
+        git tag "$TAG"
+
+        # One push, so the commit and its tag land together or not at all.
+        git push --atomic origin main "$TAG"
