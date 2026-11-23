@@ -35,12 +35,12 @@ jobs:
 
     steps:
     - name: Checkout backend repo
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         path: backend
 
     - name: Checkout dart client repo
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         repository: sdroscher/beergargoyle-dart-client
         token: ${{ secrets.DART_CLIENT_TOKEN }}
