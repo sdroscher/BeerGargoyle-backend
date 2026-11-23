@@ -19,7 +19,7 @@ type ActivityRepository interface {
 	GetFeed(ctx context.Context, cellarID uint, from, until *time.Time, limit, offset int) ([]*model.Activity, int64, error)
 
 	// GetYearInReview returns aggregate stats for a cellar for a given calendar year.
-	GetYearInReview(ctx context.Context, cellarID uint, year int) (*model.YearInReview, error)
+	GetYearInReview(ctx context.Context, cellarID uint, year int, loc *time.Location) (*model.YearInReview, error)
 
 	// GetUntappdCheckinIDsForCellar returns the set of Untappd checkin IDs already stored for a cellar.
 	GetUntappdCheckinIDsForCellar(ctx context.Context, cellarID uint) (map[uint64]struct{}, error)
@@ -95,8 +95,8 @@ func (r *Repository) feedQuery(ctx context.Context, cellarID uint, from, until *
 
 const topNLimit = 5
 
-func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year int) (*model.YearInReview, error) {
-	yearStart := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year int, loc *time.Location) (*model.YearInReview, error) {
+	yearStart := time.Date(year, 1, 1, 0, 0, 0, 0, loc)
 	yearEnd := yearStart.AddDate(1, 0, 0)
 
 	result := &model.YearInReview{Year: year, CellarID: cellarID}
@@ -126,12 +126,33 @@ func (r *Repository) GetYearInReview(ctx context.Context, cellarID uint, year in
 		return nil, err
 	}
 
-	err = r.scanByMonth(ctx, result, cellarID, yearStart, yearEnd)
+	err = r.scanByMonth(ctx, result, cellarID, yearStart, yearEnd, loc)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.scanHighlights(ctx, result, cellarID, yearStart, yearEnd, loc)
 	if err != nil {
 		return nil, err
 	}
 
 	return result, nil
+}
+
+func (r *Repository) scanHighlights(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time, loc *time.Location) error {
+	tallies, err := r.scanBeerTallies(ctx, cellarID, yearStart, yearEnd)
+	if err != nil {
+		return err
+	}
+
+	highlights := model.PickBeerHighlights(tallies)
+	result.MostHadBeer = highlights.MostHad
+	result.StrongestBeer = highlights.Strongest
+	result.GentlestBeer = highlights.Gentlest
+	result.HighestRatedBeer = highlights.HighestRated
+	result.LowestRatedBeer = highlights.LowestRated
+
+	return r.scanBiggestDay(ctx, result, cellarID, yearStart, yearEnd, loc)
 }
 
 func (r *Repository) scanConsumptionSummary(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time) error {
@@ -147,7 +168,7 @@ func (r *Repository) scanConsumptionSummary(ctx context.Context, result *model.Y
 	err := r.DB.WithContext(ctx).Raw(`
 		SELECT
 			COALESCE(SUM(a.quantity), 0)                    AS beers_consumed,
-			COUNT(DISTINCT a.cellar_entry_id)               AS unique_beers,
+			COUNT(DISTINCT ce.beer_id)                      AS unique_beers,
 			COALESCE(SUM(a.quantity * bf.size_metric), 0)   AS total_volume_ml,
 			COALESCE(AVG(a.rating), 0)                      AS average_rating
 		FROM activities a
@@ -257,9 +278,9 @@ func (r *Repository) scanTopBreweries(ctx context.Context, result *model.YearInR
 	return err
 }
 
-func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time) error {
+func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview, cellarID uint, yearStart, yearEnd time.Time, loc *time.Location) error {
 	err := r.DB.WithContext(ctx).Raw(`
-		SELECT EXTRACT(MONTH FROM occurred_at)::int AS month, SUM(quantity) AS count
+		SELECT EXTRACT(MONTH FROM occurred_at AT TIME ZONE ?)::int AS month, SUM(quantity) AS count
 		FROM activities
 		WHERE cellar_id     = ?
 		  AND activity_type = ?
@@ -268,7 +289,7 @@ func (r *Repository) scanByMonth(ctx context.Context, result *model.YearInReview
 		  AND deleted_at   IS NULL
 		GROUP BY month
 		ORDER BY month
-	`, cellarID, model.ActivityTypeBeerConsumed, yearStart, yearEnd).
+	`, loc.String(), cellarID, model.ActivityTypeBeerConsumed, yearStart, yearEnd).
 		Scan(&result.ByMonth).Error
 
 	return err
