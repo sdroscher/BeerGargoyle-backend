@@ -1,6 +1,9 @@
 package main
 
 import (
+	// Embed the IANA zone database: the alpine runtime image ships no /usr/share/zoneinfo.
+	_ "time/tzdata"
+
 	"github.com/alecthomas/kong"
 
 	"droscher.com/BeerGargoyle/cmd"

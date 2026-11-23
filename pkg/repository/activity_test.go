@@ -53,7 +53,9 @@ func (suite *ActivityRepoTestSuite) expectYearInReviewQueriesWithHighlights(
 ) {
 	// Leading bind args before the year bounds: cellar_id (+ activity type) or, for the
 	// time-zone queries, the zone name first.
-	suite.mock.ExpectQuery(regexp.QuoteMeta("FROM activities a")).
+	// "Different beers" must count distinct beers (not cellar entries): the same beer in two formats
+	// counts once. Joined entries may be soft-deleted, so ce is deliberately not filtered.
+	suite.mock.ExpectQuery(regexp.QuoteMeta("COUNT(DISTINCT ce.beer_id)")).
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), timeEqualArg{start}, timeEqualArg{end}).
 		WillReturnRows(sqlmock.NewRows([]string{"beers_consumed"}))
 

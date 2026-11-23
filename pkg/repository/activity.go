@@ -168,7 +168,7 @@ func (r *Repository) scanConsumptionSummary(ctx context.Context, result *model.Y
 	err := r.DB.WithContext(ctx).Raw(`
 		SELECT
 			COALESCE(SUM(a.quantity), 0)                    AS beers_consumed,
-			COUNT(DISTINCT a.cellar_entry_id)               AS unique_beers,
+			COUNT(DISTINCT ce.beer_id)                      AS unique_beers,
 			COALESCE(SUM(a.quantity * bf.size_metric), 0)   AS total_volume_ml,
 			COALESCE(AVG(a.rating), 0)                      AS average_rating
 		FROM activities a
